@@ -4,5 +4,5 @@ Simple Minecraft clone made with Ursina gmae engine
 
 ## Required libraries
 
-ursina
+ursina,
 perlin-noise
