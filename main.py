@@ -115,7 +115,6 @@ def getChunk(pos):
 class Chunk(Entity):
     def __init__(self, position=(0,0), seed=0):
         super().__init__(visible_self=False, position=(position[0]*CHUNK_WIDTH, 0, position[1]*CHUNK_WIDTH))
-        self.blocks = list()
         self.renderBlocks = list()
         self.blockIDs = np.zeros((CHUNK_WIDTH+2, 32, CHUNK_WIDTH+2), dtype='int8')
         self.position = np.array([position[0], 0, position[1]])
@@ -128,13 +127,15 @@ class Chunk(Entity):
         self.norms = list()
 
     def generate(self):
-        time1 = time.perf_counter()
+        maxHeight = 0
         self.blockIDs = np.zeros((CHUNK_WIDTH+2, 32, CHUNK_WIDTH+2))
         for i in itertools.product(range(CHUNK_WIDTH+2), range(CHUNK_WIDTH+2)):
             xpos = (i[0] + (self.position[0]*CHUNK_WIDTH)-1)/100
             zpos = (i[1] + (self.position[2]*CHUNK_WIDTH)-1)/100
             noiseVal = noise1([xpos, zpos]) + 0.2 * noise2([xpos, zpos])
             blockHeight = math.floor((noiseVal)*30)+15
+            if maxHeight < blockHeight:
+                maxHeight = (blockHeight if blockHeight < 32 else 32)
             for y in range(blockHeight if blockHeight < 32 else 32):
                 if y <= blockHeight - 3:
                     self.blockIDs[i[0], y, i[1]] = 3
@@ -142,11 +143,10 @@ class Chunk(Entity):
                     self.blockIDs[i[0], y, i[1]] = 1
         # get blocks we need to actually render
         self.renderBlocks.clear()
-        coords = np.array(list(itertools.product(range(1, CHUNK_WIDTH+1), range(1, 31), range(1, CHUNK_WIDTH+1))), dtype='int8')
+        coords = np.array([i for i in itertools.product(range(1, CHUNK_WIDTH+1), range(1, maxHeight+1), range(1, CHUNK_WIDTH+1)) if self.blockIDs[i] != 0], dtype='int8')
         for i in coords:
             if self.checkRenderable(tuple(i)):
                 self.renderBlocks.append(i)
-        print("generate time: ", time.perf_counter() - time1)
         self.isGenerated = True
 
     def checkRenderable(self, pos):
@@ -160,7 +160,6 @@ class Chunk(Entity):
 
     def render(self):
         self.unrender()
-        time2 = time.perf_counter()
         i = 0
         for block in self.renderBlocks:
             i += 1
@@ -168,13 +167,11 @@ class Chunk(Entity):
             #self.blocks.append(Block(self, position=(block + self.position*(CHUNK_WIDTH-1))))
         if self.verts is None:
             return
-        print("render time: ", time.perf_counter() - time2)
         self.model = Mesh(vertices=[tuple(i) for i in self.verts.tolist()], normals=self.norms, uvs=self.uvs)
         self.texture = blockTex[1]
         self.collider = MeshCollider(self, mesh=self.model, center=Vec3(0,0,0))
         self.visible_self = True
         self.isRendered = True
-        print(self.blocks)
 
     def unrender(self):
         #for block in self.blocks:
@@ -257,12 +254,12 @@ def input(key):
     if key == "left mouse down" and lookingAt is not None:
         print(mouseChunk)
         print(lookingAt)
-        print(Vec3(lookingAt.x - (CHUNK_WIDTH * mouseChunk[0]), lookingAt.y, lookingAt.z - (CHUNK_WIDTH * mouseChunk[1])))
-        getChunk(mouseChunk).deleteBlock(Vec3(lookingAt.x - (CHUNK_WIDTH-1) * mouseChunk[0], lookingAt.y, lookingAt.z - (CHUNK_WIDTH-1) * mouseChunk[1]))
+        print(Vec3(lookingAt.x - ((CHUNK_WIDTH) * mouseChunk[0]), lookingAt.y, lookingAt.z - ((CHUNK_WIDTH+1) * mouseChunk[1])))
+        getChunk(mouseChunk).deleteBlock(Vec3(lookingAt.x - ((CHUNK_WIDTH) * mouseChunk[0]), lookingAt.y, lookingAt.z - ((CHUNK_WIDTH) * mouseChunk[1])))
     elif key == "right mouse down" and lookingAt is not None:
-        getChunk(mouseChunk).addBlock(Vec3(lookingAt.x - (CHUNK_WIDTH-1) * mouseChunk[0] + mouse.normal.x,
-                                       lookingAt.y + mouse.normal.y,
-                                       lookingAt.z - (CHUNK_WIDTH-1) * mouseChunk[1] + mouse.normal.z), 1)
+        getChunk(mouseChunk).addBlock(Vec3(lookingAt.x - ((CHUNK_WIDTH) * mouseChunk[0]) + mouse.normal.x,
+                                           lookingAt.y + mouse.normal.y,
+                                           lookingAt.z - ((CHUNK_WIDTH) * mouseChunk[1]) + mouse.normal.z), 1)
 def update():
     global currentChunk, lookingAt, mouseChunk
     if fpc.grounded:
@@ -275,7 +272,7 @@ def update():
                          math.floor(mouse.world_point.y - 0.5*mouse.normal.y),
                          math.floor(mouse.world_point.z - 0.5*mouse.normal.z))
         blockHighlight.position = lookingAt + Vec3(1, 1, 1)
-        mouseChunk = (math.floor(lookingAt[0] / (CHUNK_WIDTH)), math.floor(lookingAt[2] / (CHUNK_WIDTH)))
+        mouseChunk = (math.floor((lookingAt[0]-1) / (CHUNK_WIDTH)), math.floor((lookingAt[2]-1) / (CHUNK_WIDTH)))
     else:
         lookingAt = None
 
@@ -283,6 +280,5 @@ def update():
 
 sky = Sky(color="87ceeb", texture=None)
 while len(renderedChunks) < math.pow(RENDER_DISTANCE * 2 + 1, 2):
-    fpc.grounded = True
     doChunkRendering()
 app.run()
