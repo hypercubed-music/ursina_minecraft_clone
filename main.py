@@ -10,7 +10,7 @@ import random
 from ursina.scripts.project_uvs import project_uvs
 
 CHUNK_WIDTH = 8
-CHUNK_HEIGHT = 32
+CHUNK_HEIGHT = 256
 RENDER_DISTANCE = 3
 BLOCK_TYPES = 2
 
@@ -47,7 +47,7 @@ base_norms = [(1.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 0.0)
               (-0.0, -1.0, 0.0), (-0.0, -1.0, 0.0), (-0.0, -1.0, 0.0), (-0.0, -1.0, 0.0), (-0.0, 1.0, 0.0),
               (-0.0, 1.0, 0.0), (-0.0, 1.0, 0.0), (-0.0, 1.0, 0.0), (-0.0, 1.0, 0.0), (-0.0, 1.0, 0.0)]
 
-fpc = FirstPersonController(x=0, y=20, z=0, height=0.85)
+fpc = FirstPersonController(x=0, y=20, z=0, height=1.7)
 blockHighlight = Entity(model='cube', visible=False, position=(0,0,0), scale=1.1, color=color.rgba(255,255,255,128), origin=(0.45, 0.45, 0.45))
 
 #fpc = EditorCamera()
@@ -80,7 +80,7 @@ class Chunk(Entity):
     def __init__(self, position=(0,0), seed=0):
         super().__init__(visible_self=False, position=(position[0]*CHUNK_WIDTH, 0, position[1]*CHUNK_WIDTH))
         self.renderBlocks = list()
-        self.blockIDs = np.zeros((CHUNK_WIDTH+2, 32, CHUNK_WIDTH+2), dtype='int8')
+        self.blockIDs = np.zeros((CHUNK_WIDTH+2, CHUNK_HEIGHT, CHUNK_WIDTH+2), dtype='int8')
         self.position = np.array([position[0], 0, position[1]])
         self.position_xz = position
         self.isGenerated = False
@@ -102,15 +102,15 @@ class Chunk(Entity):
 
     def generate(self):
         maxHeight = 0
-        self.blockIDs = np.zeros((CHUNK_WIDTH+2, 32, CHUNK_WIDTH+2))
+        self.blockIDs = np.zeros((CHUNK_WIDTH+2, CHUNK_HEIGHT, CHUNK_WIDTH+2))
         for i in itertools.product(range(CHUNK_WIDTH+2), range(CHUNK_WIDTH+2)):
             xpos = (i[0] + (self.position[0]*CHUNK_WIDTH)-1)/100
             zpos = (i[1] + (self.position[2]*CHUNK_WIDTH)-1)/100
-            noiseVal = noise1([xpos, zpos]) + 0.2 * noise2([xpos, zpos])
+            noiseVal = noise1([xpos + noise2([xpos, zpos]), zpos])
             blockHeight = math.floor((noiseVal)*30)+15
             if maxHeight < blockHeight:
-                maxHeight = (blockHeight if blockHeight < 32 else 32)
-            for y in range(blockHeight if blockHeight < 32 else 32):
+                maxHeight = (blockHeight if blockHeight < CHUNK_HEIGHT else CHUNK_HEIGHT)
+            for y in range(blockHeight if blockHeight < CHUNK_HEIGHT else CHUNK_HEIGHT):
                 if y <= blockHeight - 3:
                     self.blockIDs[i[0], y, i[1]] = 1
                 else:
