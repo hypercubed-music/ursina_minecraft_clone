@@ -101,6 +101,7 @@ class Chunk(Entity):
                 self.renderBlocks.append(i)
 
     def generate(self):
+        global addedBlocks, deletedBlocks
         maxHeight = 0
         self.blockIDs = np.zeros((CHUNK_WIDTH+2, CHUNK_HEIGHT, CHUNK_WIDTH+2))
         for i in itertools.product(range(CHUNK_WIDTH+2), range(CHUNK_WIDTH+2)):
@@ -115,6 +116,12 @@ class Chunk(Entity):
                     self.blockIDs[i[0], y, i[1]] = 1
                 else:
                     self.blockIDs[i[0], y, i[1]] = 2
+        if (self.position[0], self.position[2]) in addedBlocks:
+            for added in addedBlocks[(self.position[0], self.position[2])]:
+                self.blockIDs[added[0], added[1], added[2]] = added[3]
+        if (self.position[0], self.position[2]) in deletedBlocks:
+            for deleted in deletedBlocks[(self.position[0], self.position[2])]:
+                self.blockIDs[deleted[0], deleted[1], deleted[2]] = 0
         # get blocks we need to actually render
         self.getRenderable(maxHeight)
         self.isGenerated = True
@@ -159,15 +166,21 @@ class Chunk(Entity):
         self.norms += base_norms
 
     def deleteBlock(self, position):
+        global deletedBlocks
         _position = [int(position.x), int(position.y), int(position.z)]
         if self.blockIDs[_position[0],_position[1], _position[2]] != 0:
             self.blockIDs[_position[0],_position[1], _position[2]] = 0
         removearray(self.renderBlocks, _position)
+        if ((self.position[0], self.position[2]) in addedBlocks):
+            deletedBlocks[(self.position[0], self.position[2])].append(tuple(_position))
+        else:
+            deletedBlocks[(self.position[0], self.position[2])] = [tuple(_position)]
         # update surrounding blocks
         self.checkSurrounding(_position)
         self.render()
 
     def addBlock(self, position, id):
+        global addedBlocks
         _position = [int(position.x), int(position.y), int(position.z)]
         if _position[0] > CHUNK_WIDTH:
             getChunk((self.position[0] + 1, self.position[2])).addBlock(Vec3(_position[0], _position[1], _position[2], ) - Vec3(CHUNK_WIDTH, 0, 0), id)
@@ -179,6 +192,10 @@ class Chunk(Entity):
             getChunk((self.position[0], self.position[2] - 1)).addBlock(Vec3(_position[0], _position[1], _position[2], ) + Vec3(0, 0, CHUNK_WIDTH), id)
         if self.blockIDs[_position[0], _position[1], _position[2]] != id:
             self.blockIDs[_position[0], _position[1], _position[2]] = id
+            if ((self.position[0], self.position[2]) in addedBlocks):
+                addedBlocks[(self.position[0], self.position[2])].append((_position[0], _position[1], _position[2], id))
+            else:
+                addedBlocks[(self.position[0], self.position[2])] = [(_position[0], _position[1], _position[2], id)]
         self.checkSurrounding(_position)
         self.render()
 
