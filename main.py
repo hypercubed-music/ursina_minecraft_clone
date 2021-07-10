@@ -117,15 +117,19 @@ class Chunk(Entity):
 
     def getRenderable(self, maxHeight=(CHUNK_HEIGHT-1)):
         # Get a list of renderable blocks
-        self.renderBlocks.clear()
-        _coords = np.array(
-            [i for i in itertools.product(range(1, CHUNK_WIDTH + 1), range(0, maxHeight + 1), range(1, CHUNK_WIDTH + 1))
-             if self.blockIDs[i] != 0], dtype='int16')
+        mask = (self.blockIDs == 0)
+        # black magic (https://stackoverflow.com/questions/68322118/)
+        out = np.zeros(mask.shape, dtype='bool')
+        out[:-1] = out[:-1] | mask[1:]
+        out[1:] = out[1:] | mask[:-1]
+        out[:, :-1] = out[:, :-1] | mask[:, 1:]
+        out[:, 1:] = out[:, 1:] | mask[:, :-1]
+        out[:, :, :-1] = out[:, :, :-1] | mask[:, :, 1:]
+        out[:, :, 1:] = out[:, :, 1:] | mask[:, :, :-1]
 
-        for i in _coords:
-            self.checkRenderable(tuple(i))
-            #if self.checkRenderable(tuple(i)):
-            #    self.renderBlocks.append(i)
+        temp = np.argwhere(out & (self.blockIDs != 0))
+        self.renderBlocks = temp[~np.any(np.logical_or(temp == 0, temp == CHUNK_WIDTH + 1), axis=1)]
+
 
     def generate(self):
         global addedBlocks, deletedBlocks
@@ -179,26 +183,14 @@ class Chunk(Entity):
         print("generate: " + str(time.perf_counter() - time1))
         self.isGenerated = True
 
-    def checkRenderable(self, pos):
-        _pos = [int(i) for i in pos]
-        if self.blockIDs[_pos[0], _pos[1], _pos[2]] == 0:
-            return
-        surround_list = [self.blockIDs[_pos[0] + 1, _pos[1], _pos[2]], self.blockIDs[_pos[0] - 1, _pos[1], _pos[2]],
-                             self.blockIDs[_pos[0], _pos[1] + 1, _pos[2]], self.blockIDs[_pos[0], _pos[1] - 1, _pos[2]],
-                             self.blockIDs[_pos[0], _pos[1], _pos[2] + 1], self.blockIDs[_pos[0], _pos[1], _pos[2] - 1]]
-        #return 0 in surround_list
-        if 0 in surround_list:
-            self.renderBlocks.append(np.array(_pos))
-            #self.renderFaces.append([(i == 0) for i in surround_list])
-
-
     def render(self):
         self.unrender()
         self.updateBorder()
         i = 0
-        #print(self.renderFaces)
+        # print(self.renderFaces)
         for block in self.renderBlocks:
-            #self.addToMesh((block + self.position*(CHUNK_WIDTH-1)), self.renderFaces[i], int(self.blockIDs[block[0], block[1], block[2]]))
+            # self.addToMesh((block + self.position*(CHUNK_WIDTH-1)), self.renderFaces[i], int(self.blockIDs[block[0], block[1], block[2]]))
+
             self.addToMesh((block + self.position * (CHUNK_WIDTH - 1)), int(self.blockIDs[block[0], block[1], block[2]]))
             i += 1
         if self.verts is None:
@@ -209,7 +201,7 @@ class Chunk(Entity):
         self.collider = MeshCollider(self, mesh=self.model, center=Vec3(0,0,0))
         self.visible_self = True
         self.isRendered = True
-        #self.shader = lit_with_shadows_shader
+        # self.shader = lit_with_shadows_shader
         print(len(self.verts))
 
     def unrender(self):
