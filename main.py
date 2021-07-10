@@ -13,7 +13,7 @@ from ursina.shaders import *
 
 CHUNK_WIDTH = 8
 CHUNK_HEIGHT = 256
-RENDER_DISTANCE = 4
+RENDER_DISTANCE = 8
 BLOCK_TYPES = 2
 
 '''noise1 = PerlinNoise(octaves=3, seed=random.randint(1, 65535))
@@ -30,19 +30,18 @@ load_model('block')
 
 blockTex = load_texture('assets/all_blocks.png')
 texOffsets = [None, (0,1), (0,0), (1,0), (1,1)]
-texFaceOffsets = [[], [(3,0), (3,0), (2,0), (11,1), (3,0), (3,0)],
-                  [(19,0) for x in range(6)]]
-#TEXIMGWIDTH = 2
+texFaceOffsets = np.array([[(0,31), (0,31), (0,31), (0,31), (0,31), (0,31)],[(19,31) for x in range(6)],
+                          [(3,31), (3,31), (3,31), (3,31), (11,30), (2,31)]])
 TEXIMGHEIGHT = 16
-TEXIMGWIDTH = 2
+TEXIMGWIDTH = 32
 
-base_verts = [(1, 0, 1), (1, 1, 1), (1, 1, 0), (1, 1, 0), (1, 0, 0), (1, 0, 1),#right
+base_verts = np.array([(1, 0, 1), (1, 1, 1), (1, 1, 0), (1, 1, 0), (1, 0, 0), (1, 0, 1),#right
               (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 1, 0), (0, 0, 0), (1, 0, 0),#back
               (0, 0, 0), (0, 1, 0), (0, 1, 1), (0, 1, 1), (0, 0, 1), (0, 0, 0),#left
               (0, 0, 1), (0, 1, 1), (1, 1, 1), (1, 1, 1), (1, 0, 1), (0, 0, 1),#front
               (1, 0, 0), (0, 0, 0), (0, 0, 1), (0, 0, 1), (1, 0, 1), (1, 0, 0),#bottom
-              (0, 1, 0), (1, 1, 0), (1, 1, 1), (1, 1, 1), (0, 1, 1), (0, 1, 0)]#top
-'''top_face = [(0, 1, 0), (1, 1, 0), (1, 1, 1), (1, 1, 1), (0, 1, 1), (0, 1, 0)]
+              (0, 1, 0), (1, 1, 0), (1, 1, 1), (1, 1, 1), (0, 1, 1), (0, 1, 0)])#top
+top_face = [(0, 1, 0), (1, 1, 0), (1, 1, 1), (1, 1, 1), (0, 1, 1), (0, 1, 0)]
 bottom_face = [(1, 0, 0), (0, 0, 0), (0, 0, 1), (0, 0, 1), (1, 0, 1), (1, 0, 0)]
 left_face = [(0, 0, 0), (0, 1, 0), (0, 1, 1), (0, 1, 1), (0, 0, 1), (0, 0, 0)]
 right_face = [(1, 0, 1), (1, 1, 1), (1, 1, 0), (1, 1, 0), (1, 0, 0), (1, 0, 1)]
@@ -53,14 +52,14 @@ bottom_uv = []
 left_uv = []
 right_uv = []
 front_uv = []
-back_uv = []'''
+back_uv = []
 
-base_uvs = [(0.375, 0.0), (0.625, 0.0), (0.625, 0.25), (0.625, 0.25), (0.375, 0.25), (0.375, 0.0),
+base_uvs = np.array([(0.375, 0.0), (0.625, 0.0), (0.625, 0.25), (0.625, 0.25), (0.375, 0.25), (0.375, 0.0),
             (0.375, 0.25),(0.625, 0.25), (0.625, 0.5), (0.625, 0.5), (0.375, 0.5), (0.375, 0.25),
             (0.375, 0.5), (0.625, 0.5),(0.625, 0.75), (0.625, 0.75), (0.375, 0.75), (0.375, 0.5),
             (0.375, 0.75), (0.625, 0.75), (0.625, 1.0),(0.625, 1.0), (0.375, 1.0), (0.375, 0.75),
             (0.125, 0.5), (0.375, 0.5), (0.375, 0.75), (0.375, 0.75),(0.125, 0.75), (0.125, 0.5),
-            (0.625, 0.5), (0.875, 0.5), (0.875, 0.75), (0.875, 0.75), (0.625, 0.75),(0.625, 0.5)]
+            (0.625, 0.5), (0.875, 0.5), (0.875, 0.75), (0.875, 0.75), (0.625, 0.75),(0.625, 0.5)])
 
 base_norms = [(1.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 0.0),
               (-0.0, 0.0, -1.0), (-0.0, 0.0, -1.0), (-0.0, 0.0, -1.0), (-0.0, 0.0, -1.0), (-0.0, 0.0, -1.0),
@@ -112,7 +111,7 @@ class Chunk(Entity):
         self.isRendered = False
         self.hasCollider = False
         self.verts = None
-        self.uvs = list()
+        self.uvs = None
         self.norms = list()
 
     def getRenderable(self, maxHeight=(CHUNK_HEIGHT-1)):
@@ -130,7 +129,6 @@ class Chunk(Entity):
         temp = np.argwhere(out & (self.blockIDs != 0))
         self.renderBlocks = temp[~np.any(np.logical_or(temp == 0, temp == CHUNK_WIDTH + 1), axis=1)]
 
-
     def generate(self):
         global addedBlocks, deletedBlocks
         maxHeight = 0
@@ -141,7 +139,7 @@ class Chunk(Entity):
             xpos = (i[0] + (self.position[0]*CHUNK_WIDTH)-1)/100
             zpos = (i[1] + (self.position[2]*CHUNK_WIDTH)-1)/100
             noiseVal = snoise2(x=xpos + snoise2(x=xpos, y=zpos, octaves=3), y=zpos, octaves=3, base=seeds[0])
-            blockHeight = math.floor((noiseVal)*15)+48
+            blockHeight = math.floor(noiseVal * 15) + 48
             if maxHeight < blockHeight:
                 maxHeight = (blockHeight if blockHeight < CHUNK_HEIGHT else CHUNK_HEIGHT)
             for y in range(blockHeight if blockHeight < CHUNK_HEIGHT else CHUNK_HEIGHT):
@@ -189,15 +187,15 @@ class Chunk(Entity):
         i = 0
         # print(self.renderFaces)
         for block in self.renderBlocks:
-            # self.addToMesh((block + self.position*(CHUNK_WIDTH-1)), self.renderFaces[i], int(self.blockIDs[block[0], block[1], block[2]]))
-
+            #self.addToMesh((block + self.position*(CHUNK_WIDTH-1)), self.renderFaces[i], int(self.blockIDs[block[0], block[1], block[2]]))
             self.addToMesh((block + self.position * (CHUNK_WIDTH - 1)), int(self.blockIDs[block[0], block[1], block[2]]))
             i += 1
+        print(self.uvs.shape)
         if self.verts is None:
             self.isRendered = True
             return
-        self.model = Mesh(vertices=[tuple(i) for i in self.verts.tolist()], normals=self.norms, uvs=self.uvs)
-        self.texture = blockTex
+        self.model = Mesh(vertices=[tuple(i) for i in self.verts.tolist()], normals=self.norms, uvs=self.uvs.tolist())
+        self.texture = 'assets/atlas.png'
         self.collider = MeshCollider(self, mesh=self.model, center=Vec3(0,0,0))
         self.visible_self = True
         self.isRendered = True
@@ -207,30 +205,29 @@ class Chunk(Entity):
     def unrender(self):
         self.model = None
         self.verts = None
-        self.uvs = list()
+        self.uvs = None
         self.norms = list()
 
     def addToMesh(self, pos, blockID=1):
-        '''texPos = texFaceOffsets[blockID]
-        face_verts = [right_face, left_face, top_face, bottom_face, front_face, back_face]
-        face_uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (1.0,1.0), (0.0,1.0), (0.0, 0.0)]
-        face_norms = [(1,0,0), (-1,0,0), (0,1,0), (0,-1,0), (0,0,1), (0,0,-1)]
-        _pos = np.array(pos)
-        for idx, face in enumerate(faces):
-            if face:
-                if self.verts is None:
-                    self.verts = np.array(face_verts[idx]) + _pos
-
-                else:
-                    self.verts = np.append(self.verts, base_verts + _pos, axis=0)
-                self.uvs += [((i[0] + texPos[idx][0])/TEXIMGWIDTH, (i[1] + texPos[idx][1])/TEXIMGHEIGHT) for i in face_uvs]
-                self.norms += [face_norms[idx] for i in range(6)]'''
+        #texPos = texFaceOffsets[blockID]
+        #face_verts = [right_face, left_face, top_face, bottom_face, front_face, back_face]
+        face_uvs = np.array([ (0.0,0.0), (0.0,1.0), (1.0, 1.0),(1.0, 1.0), (1.0, 0.0), (0.0, 0.0)])
+        #face_norms = [(1,0,0), (-1,0,0), (0,1,0), (0,-1,0), (0,0,1), (0,0,-1)]
         _pos = np.array(pos)
         if self.verts is None:
-            self.verts = np.array(base_verts) + _pos
+            self.verts = base_verts + _pos
         else:
             self.verts = np.append(self.verts, base_verts + _pos, axis=0)
-        self.uvs += [((i[0] + texOffsets[blockID][0])/TEXIMGWIDTH, (i[1] + texOffsets[blockID][1])/TEXIMGWIDTH) for i in base_uvs]
+        #self.uvs += [((i[0] + texOffsets[blockID][0])/TEXIMGWIDTH, (i[1] + texOffsets[blockID][1])/TEXIMGWIDTH) for i in base_uvs]
+        for i in range(6):
+            if self.uvs is None:
+                self.uvs = (face_uvs + texFaceOffsets[blockID,i]) / TEXIMGWIDTH
+            else:
+                self.uvs = np.append(self.uvs, (face_uvs + texFaceOffsets[blockID, i]) / TEXIMGWIDTH, axis=0)
+        '''if self.uvs is None:
+            self.uvs = (base_uvs + texOffsets[blockID])/TEXIMGWIDTH
+        else:
+            self.uvs = np.append(self.uvs, (base_uvs + texOffsets[blockID])/TEXIMGWIDTH, axis=0)'''
         self.norms += base_norms
 
     def deleteBlock(self, position):
@@ -238,7 +235,7 @@ class Chunk(Entity):
         _position = [int(position.x), int(position.y), int(position.z)]
         if self.blockIDs[_position[0],_position[1], _position[2]] != 0:
             self.blockIDs[_position[0],_position[1], _position[2]] = 0
-        removearray(self.renderBlocks, _position)
+        self.renderBlocks = self.renderBlocks[np.all(self.renderBlocks != _position, axis=1)]
         if ((self.position[0], self.position[2]) in addedBlocks):
             deletedBlocks[(self.position[0], self.position[2])].append(tuple(_position))
         else:
@@ -290,9 +287,10 @@ class Chunk(Entity):
                 ch = getChunk(tuple(chPos))
                 if ch not in chList and ch != self:
                     chList.append(ch)
-            if not arreq_in_list(np.array(newpos), ch.renderBlocks):
-                ch.checkRenderable(tuple(newpos))
+            #if not arreq_in_list(np.array(newpos), ch.renderBlocks):
+            #    ch.checkRenderable(tuple(newpos))
         for ch in chList:
+            ch.getRenderable()
             ch.render()
 
     def setCollider(self):
