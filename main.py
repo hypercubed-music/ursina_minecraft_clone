@@ -1,9 +1,9 @@
 import threading
-
+from concurrent.futures import ThreadPoolExecutor
 from ursina import *
 from ursina.prefabs.first_person_controller import FirstPersonController
 
-RENDER_DISTANCE = 4
+RENDER_DISTANCE = 2
 BLOCK_TYPES = 2
 
 app = Ursina()
@@ -70,7 +70,6 @@ chunkThread = threading.Thread()
 def update():
     global currentChunk, lookingAt, mouseChunk, chunkThread
     currentChunk = (math.floor(fpc.position[0] / CHUNK_WIDTH), math.floor(fpc.position[2] / CHUNK_WIDTH))
-    #currentChunk = doChunkRendering()
     if chunkThread is None:
         chunkThread = threading.Thread(doChunkRendering(currentChunk)).start()
     elif not chunkThread.is_alive():
@@ -103,5 +102,6 @@ while len(renderedChunks) < math.pow(RENDER_DISTANCE * 2 + 1, 2):
     print(len(renderedChunks), "/", math.pow(RENDER_DISTANCE * 2 + 1, 2))
 #fpc = EditorCamera(enabled=1)
 fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[1, :, 1] != 0)) + 30
+scene.fog_density = .1
 
 app.run()
