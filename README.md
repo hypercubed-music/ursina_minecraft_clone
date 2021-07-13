@@ -6,5 +6,5 @@
 ## Required libraries
 
 ursina,
-perlin-noise,
+noise,
 numpy
