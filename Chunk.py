@@ -1,9 +1,13 @@
+import random
+
 from ursina import *
 import numpy as np
 import itertools
 from noise import *
+#from perlin_noise import *
 from ursina.shaders import *
 from multiprocessing import Process, Pipe
+from numba import jit
 
 CHUNK_WIDTH = 8
 CHUNK_HEIGHT = 256
@@ -94,55 +98,38 @@ class Chunk(Entity):
 
     def generate(self):
         global addedBlocks, deletedBlocks
-        gradient = [((i * 4) / CHUNK_HEIGHT)-0.5 for i in range(int(CHUNK_HEIGHT / 2), -int(CHUNK_HEIGHT / 2), -1)]
         cave_gradient = [-(2 - abs(i) * 4 / CHUNK_HEIGHT) for i in
-                         range(int(CHUNK_HEIGHT * 0.5), -int(CHUNK_HEIGHT * 1.5), -2)]
+                         range(int(CHUNK_HEIGHT * 0.1), -int(CHUNK_HEIGHT), -1)]
         self.blockIDs = np.zeros((CHUNK_WIDTH + 2, CHUNK_HEIGHT, CHUNK_WIDTH + 2), dtype='int16')
 
         @np.vectorize
         def caveNoiseGen(x, y, z):
-            return 1 if (snoise3(x / 32, y / 32, z/32, octaves=6) + (1 + (cave_gradient[y]/2))) * 10 > 0 else 0
+            return 1 if (snoise3(x / 32, y / 32, z / 32, octaves=2) + (
+                    1.4 + (cave_gradient[y] / 2))) > 0 else 0
 
         @np.vectorize
-        def heightNoiseGen(x, y, z):
-            base = (snoise3(x / 128 + snoise3(x / 8192, y / 8192, z / 8192, octaves=1), y / 8192,
-                            z / 128, octaves=6) +
-                    (((snoise2(x / 512, 0, octaves=1) * 3) + 3) * gradient[y]))
-            if base > 0.1:
-                return 1
-            elif base > 0 and base < 0.1:
-                return 2
-            else:
-                return 0
+        def heightNoiseGen(x, z):
+            lowNoise = snoise2(x / 128, z / 128, octaves=5) * 32 + 76
+            highNoise = ((snoise2(x / 64, z / 64, octaves=5) + snoise2(x / 1024, z / 1024,
+                                                                       octaves=1)) * 6) * 5 + 72
+            return max(lowNoise, highNoise) - 32
 
         maxHeight = 0
         time1 = time.perf_counter()
-        self.blockIDs = np.zeros((CHUNK_WIDTH + 2, CHUNK_HEIGHT, CHUNK_WIDTH + 2), dtype='int16')
         x, y, z = np.meshgrid(np.arange(CHUNK_WIDTH + 2) + (self.position[0] * CHUNK_WIDTH) - 1,
                               np.arange(CHUNK_HEIGHT),
                               np.arange(CHUNK_WIDTH + 2) + (self.position[2] * CHUNK_WIDTH) - 1)
-        caveNoise = caveNoiseGen(x, y, z)
-        heightNoise = heightNoiseGen(x, y, z)
-        print(caveNoise[5, 5, 5])
-        for i in itertools.product(range(CHUNK_WIDTH + 2), range(CHUNK_WIDTH + 2)):
-            for y in range(CHUNK_HEIGHT):
-                self.blockIDs[i[0], y, i[1]] = int(heightNoise[y, i[0], i[1]] if caveNoise[y, i[0], i[1]] == 1 else 0)
-            self.blockIDs[i[0], 0, i[1]] = 1
-        '''x, y, z = np.meshgrid(np.arange(CHUNK_WIDTH + 2) + (self.position[0] * CHUNK_WIDTH) - 1,
-                              np.arange(CHUNK_HEIGHT),
+        x2, z2 = np.meshgrid(np.arange(CHUNK_WIDTH + 2) + (self.position[0] * CHUNK_WIDTH) - 1,
                               np.arange(CHUNK_WIDTH + 2) + (self.position[2] * CHUNK_WIDTH) - 1)
-        noiseVals = np.array(
-            [snoise2(x=i + snoise2(x=i, y=j, octaves=3), y=j, octaves=3, base=seeds[0]) for i,j in (x,z)])
+        heightNoise = heightNoiseGen(x2,z2)
         caveNoise = caveNoiseGen(x, y, z)
-        blockHeights = np.array(np.floor(noiseVals * 15) + 48, dtype='int16')
-        # maxHeight = np.max(blockHeights)
-        for idx, i in enumerate(itertools.product(range(CHUNK_WIDTH + 2), range(CHUNK_WIDTH + 2))):
-            for y in range(blockHeights[idx]):
-                if caveNoise[i[0], y, i[1]] == 0:
-                    if y <= blockHeights[idx] - 3:
-                        self.blockIDs[i[0], y, i[1]] = 1
-                    else:
-                        self.blockIDs[i[0], y, i[1]] = 2'''
+        for i in itertools.product(range(CHUNK_WIDTH + 2), range(CHUNK_WIDTH + 2)):
+            blockHeight = int(heightNoise[i[1], i[0]])
+            for y in range(blockHeight):
+                self.blockIDs[i[0], y, i[1]] = (2 if (y > blockHeight-3) else 1) if caveNoise[y, i[0], i[1]] == 1 else 0
+            self.blockIDs[i[0], 0, i[1]] = 1
+
+
         # Generate added/removed blocks
         if (self.position[0], self.position[2]) in addedBlocks:
             for added in addedBlocks[(self.position[0], self.position[2])]:
@@ -150,8 +137,6 @@ class Chunk(Entity):
         if (self.position[0], self.position[2]) in deletedBlocks:
             for deleted in deletedBlocks[(self.position[0], self.position[2])]:
                 self.blockIDs[deleted[0], deleted[1], deleted[2]] = 0
-        # get blocks we need to actually render
-        # self.getRenderable()
         print("generate: " + str(time.perf_counter() - time1))
         self.isGenerated = True
 
@@ -160,9 +145,6 @@ class Chunk(Entity):
         right, left, top, bottom, front, back = self.getRenderable()
         self.unrender()
         self.updateBorder()
-        # for block in self.renderBlocks:
-        #    self.addToMesh((block + self.position * (CHUNK_WIDTH - 1)),
-        #                   int(self.blockIDs[block[0], block[1], block[2]]))
         self.buildMesh(left, right, top, bottom, front, back)
         if self.verts is None:
             self.isRendered = True
@@ -181,20 +163,6 @@ class Chunk(Entity):
         self.verts = None
         self.uvs = None
         self.norms = list()
-
-    def addToMesh(self, pos, blockID=1):
-        face_uvs = np.array([(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)])
-        _pos = np.array(pos)
-        if self.verts is None:
-            self.verts = base_verts + _pos
-        else:
-            self.verts = np.append(self.verts, base_verts + _pos, axis=0)
-        for i in range(6):
-            if self.uvs is None:
-                self.uvs = (face_uvs + texFaceOffsets[blockID, i]) / TEXIMGWIDTH
-            else:
-                self.uvs = np.append(self.uvs, (face_uvs + texFaceOffsets[blockID, i]) / TEXIMGWIDTH, axis=0)
-        self.norms += base_norms
 
     def buildMesh(self, left, right, top, bottom, front, back):
         face_uvs = np.array([(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)])
@@ -228,12 +196,6 @@ class Chunk(Entity):
                      np.repeat(texFaceOffsets[self.blockIDs[back[:, 0], back[:, 1], back[:, 2]], 3], 6,
                                axis=0))) / TEXIMGWIDTH
         self.uvs = np.concatenate((left_uvs, right_uvs, top_uvs, bottom_uvs, front_uvs, back_uvs))
-        self.norms = np.concatenate((np.repeat([[-1.0, 0.0, 0.0]], 6 * len(left), axis=0),
-                                     np.repeat([[-1.0, 0.0, 0.0]], 6 * len(right), axis=0),
-                                     np.repeat([[-1.0, 0.0, 0.0]], 6 * len(top), axis=0),
-                                     np.repeat([[-1.0, 0.0, 0.0]], 6 * len(bottom), axis=0),
-                                     np.repeat([[-1.0, 0.0, 0.0]], 6 * len(front), axis=0),
-                                     np.repeat([[-1.0, 0.0, 0.0]], 6 * len(back), axis=0)))
 
     def deleteBlock(self, position):
         global deletedBlocks

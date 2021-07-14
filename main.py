@@ -1,9 +1,8 @@
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from ursina import *
 from ursina.prefabs.first_person_controller import FirstPersonController
 
-RENDER_DISTANCE = 2
+RENDER_DISTANCE = 4
 BLOCK_TYPES = 2
 
 app = Ursina()
@@ -13,7 +12,7 @@ coords = Text(text="", origin=(0.75,0.75), background=True)
 load_model('block')
 
 fpc = FirstPersonController(x=0, y=256, z=0, height=1.7, jump_duration=0.2, jump_height=1.2)
-blockHighlight = Entity(model='wireframe_cube', visible=False, position=(0,0,0), scale=1.1, color=color.rgba(128, 128, 128), origin=(0.45, 0.45, 0.45))
+blockHighlight = Entity(model='wireframe_cube', thickness=3, visible=False, position=(0,0,0), scale=1.1, color=color.rgba(64, 64, 64), origin=(0.45, 0.45, 0.45))
 
 def removearray(L,arr):
     ind = 0
@@ -27,8 +26,6 @@ def removearray(L,arr):
 
 def arreq_in_list(myarr, list_arrays):
     return next((True for elem in list_arrays if np.array_equal(elem, myarr)), False)
-
-
 
 def doChunkRendering(_currentChunk):
     # unload distant chunks
@@ -67,6 +64,7 @@ def input(key):
                                            lookingAt.z - ((CHUNK_WIDTH) * mouseChunk[1]) + mouse.normal.z), 1)
 
 chunkThread = threading.Thread()
+dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x = 45, shadow_map_resolution = (4096,4096))
 def update():
     global currentChunk, lookingAt, mouseChunk, chunkThread
     currentChunk = (math.floor(fpc.position[0] / CHUNK_WIDTH), math.floor(fpc.position[2] / CHUNK_WIDTH))
@@ -94,14 +92,13 @@ def update():
         camera.fov = 90
 
     coords.text = ", ".join([str(int(i)) for i in list(fpc.position)]) + "\n" + (str(list(lookingAt)) if lookingAt is not None else "")
+    dl.rotation_x -= 0.5 * time.dt
 
 sky = Sky(color="87ceeb", texture=None)
-#DirectionalLight(y=2, z=3, shadows=True, rotation_z = 45)
 while len(renderedChunks) < math.pow(RENDER_DISTANCE * 2 + 1, 2):
     doChunkRendering((0,0))
     print(len(renderedChunks), "/", math.pow(RENDER_DISTANCE * 2 + 1, 2))
 #fpc = EditorCamera(enabled=1)
 fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[1, :, 1] != 0)) + 30
-scene.fog_density = .1
 
 app.run()
