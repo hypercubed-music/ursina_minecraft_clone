@@ -4,10 +4,9 @@ from ursina import *
 import numpy as np
 import itertools
 from noise import *
-#from perlin_noise import *
 from ursina.shaders import *
-from multiprocessing import Process, Pipe
-from numba import jit
+from multiprocessing import Process, Queue
+from ursinanetworking import *
 
 CHUNK_WIDTH = 8
 CHUNK_HEIGHT = 256
@@ -49,6 +48,7 @@ lookingAt = Vec3()
 addedBlocks = dict()
 deletedBlocks = dict()
 
+Client = UrsinaNetworkingClient("localhost", 25565)
 
 def getChunk(pos):
     if pos in renderedChunkPos:
@@ -69,8 +69,8 @@ class Chunk(Entity):
         self.verts = None
         self.uvs = None
         self.norms = list()
-        self.generateProcess = Process()
-        self.parent_conn, self.child_conn = Pipe()
+        self.shader = lit_with_shadows_shader
+        self.generate_proc = Process()
 
     def getRenderable(self, maxHeight=(CHUNK_HEIGHT - 1)):
         # Get a list of renderable blocks
@@ -97,48 +97,19 @@ class Chunk(Entity):
         return right, left, top, bottom, front, back
 
     def generate(self):
-        global addedBlocks, deletedBlocks
-        cave_gradient = [-(2 - abs(i) * 4 / CHUNK_HEIGHT) for i in
-                         range(int(CHUNK_HEIGHT * 0.1), -int(CHUNK_HEIGHT), -1)]
-        self.blockIDs = np.zeros((CHUNK_WIDTH + 2, CHUNK_HEIGHT, CHUNK_WIDTH + 2), dtype='int16')
-
-        @np.vectorize
-        def caveNoiseGen(x, y, z):
-            return 1 if (snoise3(x / 32, y / 32, z / 32, octaves=2) + (
-                    1.4 + (cave_gradient[y] / 2))) > 0 else 0
-
-        @np.vectorize
-        def heightNoiseGen(x, z):
-            lowNoise = snoise2(x / 128, z / 128, octaves=5) * 32 + 76
-            highNoise = ((snoise2(x / 64, z / 64, octaves=5) + snoise2(x / 1024, z / 1024,
-                                                                       octaves=1)) * 6) * 5 + 72
-            return max(lowNoise, highNoise) - 32
-
-        maxHeight = 0
+        global addedBlocks, deletedBlocks, Client
         time1 = time.perf_counter()
-        x, y, z = np.meshgrid(np.arange(CHUNK_WIDTH + 2) + (self.position[0] * CHUNK_WIDTH) - 1,
-                              np.arange(CHUNK_HEIGHT),
-                              np.arange(CHUNK_WIDTH + 2) + (self.position[2] * CHUNK_WIDTH) - 1)
-        x2, z2 = np.meshgrid(np.arange(CHUNK_WIDTH + 2) + (self.position[0] * CHUNK_WIDTH) - 1,
-                              np.arange(CHUNK_WIDTH + 2) + (self.position[2] * CHUNK_WIDTH) - 1)
-        heightNoise = heightNoiseGen(x2,z2)
-        caveNoise = caveNoiseGen(x, y, z)
-        for i in itertools.product(range(CHUNK_WIDTH + 2), range(CHUNK_WIDTH + 2)):
-            blockHeight = int(heightNoise[i[1], i[0]])
-            for y in range(blockHeight):
-                self.blockIDs[i[0], y, i[1]] = (2 if (y > blockHeight-3) else 1) if caveNoise[y, i[0], i[1]] == 1 else 0
-            self.blockIDs[i[0], 0, i[1]] = 1
-
-
-        # Generate added/removed blocks
-        if (self.position[0], self.position[2]) in addedBlocks:
-            for added in addedBlocks[(self.position[0], self.position[2])]:
-                self.blockIDs[added[0], added[1], added[2]] = added[3]
-        if (self.position[0], self.position[2]) in deletedBlocks:
-            for deleted in deletedBlocks[(self.position[0], self.position[2])]:
-                self.blockIDs[deleted[0], deleted[1], deleted[2]] = 0
-        print("generate: " + str(time.perf_counter() - time1))
-        self.isGenerated = True
+        if Client.connected:
+            _pos = (self.position.x, self.position.y, self.position.z)
+            if (self.position[0], self.position[2]) in addedBlocks:
+                ourAdded = addedBlocks[(self.position[0], self.position[2])]
+            else:
+                ourAdded = []
+            if (self.position[0], self.position[2]) in deletedBlocks:
+                ourDeleted = deletedBlocks[(self.position[0], self.position[2])]
+            else:
+                ourDeleted = []
+            Client.send_message("generate", [_pos, CHUNK_WIDTH, CHUNK_HEIGHT,ourAdded,ourDeleted])
 
     def render(self):
         time1 = time.perf_counter()
@@ -149,13 +120,12 @@ class Chunk(Entity):
         if self.verts is None:
             self.isRendered = True
             return
-        self.model = Mesh(vertices=[tuple(i) for i in self.verts], normals=[tuple(i) for i in self.norms],
+        self.model = Mesh(vertices=[tuple(i) for i in self.verts],
                           uvs=self.uvs.tolist())
         self.texture = blockTex
         self.collider = MeshCollider(self, mesh=self.model, center=Vec3(0, 0, 0))
         self.visible_self = True
         self.isRendered = True
-        self.shader = lit_with_shadows_shader
         print("render: " + str(time.perf_counter() - time1))
 
     def unrender(self):
@@ -196,6 +166,7 @@ class Chunk(Entity):
                      np.repeat(texFaceOffsets[self.blockIDs[back[:, 0], back[:, 1], back[:, 2]], 3], 6,
                                axis=0))) / TEXIMGWIDTH
         self.uvs = np.concatenate((left_uvs, right_uvs, top_uvs, bottom_uvs, front_uvs, back_uvs))
+
 
     def deleteBlock(self, position):
         global deletedBlocks
