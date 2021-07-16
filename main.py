@@ -16,7 +16,8 @@ load_model('block')
 fpc = FirstPersonController(x=0, y=256, z=0, height=1.7, jump_duration=0.2, jump_height=1.2)
 collision_zone = CollisionZone(parent=fpc, radius=16)
 blockHighlight = Entity(model='wireframe_cube', thickness=3, visible=False, position=(0, 0, 0), scale=1.1,
-                        color=color.rgba(64, 64, 64), origin=(0.45, 0.45, 0.45))
+                        color=color.rgba(64, 64, 64), origin=(0.45, 0.45, 0.45), unlit=True)
+
 
 @Client.event
 def recvChunkBlocks(Content):
@@ -30,27 +31,32 @@ def recvChunkBlocks(Content):
         threading.Thread(ch.render(), daemon=True).start()
     print("recv time:", time.perf_counter() - time1)
 
+
 @Client.event
 def preGenProgress(Content):
     prog = Content[0]
     total = Content[1]
     print("Server is pregenerating: ", prog, "/", total)
 
+
 @Client.event
 def serverPrint(Content):
     print(Content)
+
 
 @Client.event
 def onConnectionError(Reason):
     print(f"Error ! Reason : {Reason}")
 
-dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x=45, shadow_map_resolution=(4096, 4096))
+
+dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x=45, rotation_y=45, rotation_z=45)
 
 
 def doChunkRendering(_currentChunk):
     # unload distant chunks
     xRange = range(_currentChunk[0] - RENDER_DISTANCE, _currentChunk[0] + RENDER_DISTANCE + 1)
     zRange = range(_currentChunk[1] - RENDER_DISTANCE, _currentChunk[1] + RENDER_DISTANCE + 1)
+    chRange = sorted(list(itertools.product(xRange, zRange)), key=lambda x: abs(x[0]) + abs(x[1]))
     for idx, chunk in enumerate(renderedChunkPos):
         if not (chunk[0] in xRange and chunk[1] in zRange):
             destroy(renderedChunks[idx])
@@ -59,14 +65,15 @@ def doChunkRendering(_currentChunk):
             break
 
     if len(renderedChunks) == 0:
-        renderedChunkPos.append((xRange[0], zRange[0]))
-        renderedChunks.append(Chunk((xRange[0], zRange[0])))
+        renderedChunkPos.append(chRange[0])
+        renderedChunks.append(Chunk(chRange[0]))
         # threading.Thread(renderedChunks[-1].generate(), daemon=True).start()
         renderedChunks[-1].generate()
     else:
-        for i in itertools.product(xRange, zRange):
-            if not (i[0], i[1]) in renderedChunkPos:
+        for i in chRange:
+            if not i in renderedChunkPos:
                 if renderedChunks[-1].isGenerated:
+                    print("Generate " + str(i))
                     renderedChunkPos.append((i[0], i[1]))
                     renderedChunks.append(Chunk((i[0], i[1])))
                     # threading.Thread(renderedChunks[-1].generate(), daemon=True).start()
@@ -100,10 +107,6 @@ chunkThread = threading.Thread()
 def update():
     global currentChunk, lookingAt, mouseChunk, chunkThread
     currentChunk = (math.floor(fpc.position[0] / CHUNK_WIDTH), math.floor(fpc.position[2] / CHUNK_WIDTH))
-    '''if chunkThread is None:
-        chunkThread = threading.Thread(doChunkRendering(currentChunk), daemon=True).start()
-    elif not chunkThread.is_alive():
-        chunkThread = threading.Thread(doChunkRendering(currentChunk), daemon=True).start()'''
     doChunkRendering(currentChunk)
     if mouse.hovered_entity is not None and 1 < distance(mouse.point, fpc) < 10:
         blockHighlight.visible = True
@@ -131,9 +134,9 @@ def update():
 
 
 # Start the server
-p = subprocess.Popen([sys.executable, 'server.py'],
+'''p = subprocess.Popen([sys.executable, 'server.py'],
                      stdout=subprocess.PIPE,
-                     stderr=subprocess.STDOUT)
+                     stderr=subprocess.STDOUT)'''
 print("Client has started the server")
 
 sky = Sky(color="87ceeb", texture=None)
@@ -141,9 +144,9 @@ sky = Sky(color="87ceeb", texture=None)
 while not Client.connected:
     pass
 print("Connected")
-while len(renderedChunks) < math.pow(RENDER_DISTANCE * 2 + 1, 2):
+while len(renderedChunks) < 2:
     doChunkRendering((0, 0))
     Client.process_net_events()
 
-fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 30
+fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 20
 app.run()

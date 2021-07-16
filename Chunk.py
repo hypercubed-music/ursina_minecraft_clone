@@ -15,8 +15,28 @@ TEXIMGWIDTH = 32
 
 blockTex = load_texture('assets/atlas.png')
 # texOffsets = [None, (0,1), (0,0), (1,0), (1,1)]
-texFaceOffsets = np.array([[(0, 31), (0, 31), (0, 31), (0, 31), (0, 31), (0, 31)], [(19, 31) for x in range(6)],
-                           [(3, 31), (3, 31), (3, 31), (3, 31), (11, 30), (2, 31)]])
+texFaceOffsets = np.array([[(0, 31), (0, 31), (0, 31), (0, 31), (0, 31), (0, 31)], # air?
+                           [(19, 31) for x in range(6)], # stone
+                           [(3, 31), (3, 31), (3, 31), (3, 31), (11, 30), (2, 31)], #dirt
+                           [(28, 29), (28,29), (28,29), (28,29), (29,29), (29,29)], #wood
+                           [(22, 27) for x in range(6)], #leaves
+                           [(23,22) for x in range(6)],
+                            [(23,22) for x in range(6)],
+                            [(24,22) for x in range(6)],
+                            [(25,22) for x in range(6)],
+                            [(26,22) for x in range(6)],
+                            [(27,22) for x in range(6)],
+                            [(28,22) for x in range(6)],
+                            [(29,22) for x in range(6)],
+                            [(30,22) for x in range(6)],
+                            [(31,22) for x in range(6)],
+                            [(1,21) for x in range(6)],
+                            [(2,21) for x in range(6)],
+                            [(3,21) for x in range(6)],
+                            [(4,21) for x in range(6)],
+                            [(5,21) for x in range(6)],
+                           [(6,21) for x in range(6)],
+                          ])
 seeds = [random.randint(1, 1000) for i in range(10)]
 base_verts = np.array([(1, 0, 1), (1, 1, 1), (1, 1, 0), (1, 1, 0), (1, 0, 0), (1, 0, 1),  # right
                        (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 1, 0), (0, 0, 0), (1, 0, 0),  # back
@@ -72,7 +92,7 @@ class Chunk(Entity):
         self.shader = lit_with_shadows_shader
         self.generate_proc = Process()
 
-    def getRenderable(self, maxHeight=(CHUNK_HEIGHT - 1)):
+    def getRenderable(self):
         # Get a list of renderable blocks
         mask = (self.blockIDs == 0)
 
@@ -83,7 +103,7 @@ class Chunk(Entity):
         front = np.argwhere(mask[:, :, 1:] & (self.blockIDs[:, :, :-1] != 0))
         back = np.argwhere(mask[:, :, :-1] & (self.blockIDs[:, :, 1:] != 0)) + np.array([0, 0, 1])
 
-        # black magic (https://stackoverflow.com/questions/68322118/)
+        '''# black magic (https://stackoverflow.com/questions/68322118/)
         out = np.zeros(mask.shape, dtype='bool')
         out[:-1] = out[:-1] | mask[1:]
         out[1:] = out[1:] | mask[:-1]
@@ -93,22 +113,14 @@ class Chunk(Entity):
         out[:, :, 1:] = out[:, :, 1:] | mask[:, :, :-1]
 
         temp = np.argwhere(out & (self.blockIDs != 0))
-        self.renderBlocks = temp[~np.any(np.logical_or(temp == 0, temp == CHUNK_WIDTH + 1), axis=1)]
+        self.renderBlocks = temp[~np.any(np.logical_or(temp == 0, temp == CHUNK_WIDTH + 1), axis=1)]'''
         return right, left, top, bottom, front, back
 
     def generate(self):
         global addedBlocks, deletedBlocks, Client
-        time1 = time.perf_counter()
         if Client.connected:
-            _pos = (self.position.x, self.position.y, self.position.z)
-            '''if (self.position[0], self.position[2]) in addedBlocks:
-                ourAdded = addedBlocks[(self.position[0], self.position[2])]
-            else:
-                ourAdded = []
-            if (self.position[0], self.position[2]) in deletedBlocks:
-                ourDeleted = deletedBlocks[(self.position[0], self.position[2])]
-            else:
-                ourDeleted = []'''
+            _pos = (int(self.position.x), int(self.position.y), int(self.position.z))
+            print("Client sending message " + str(_pos))
             Client.send_message("generate", [_pos, CHUNK_WIDTH, CHUNK_HEIGHT])
 
     def render(self):
