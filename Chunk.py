@@ -8,7 +8,7 @@ from ursina.shaders import *
 from multiprocessing import Process, Queue
 from ursinanetworking import *
 
-CHUNK_WIDTH = 8
+CHUNK_WIDTH = 16
 CHUNK_HEIGHT = 256
 TEXIMGHEIGHT = 16
 TEXIMGWIDTH = 32
@@ -101,15 +101,15 @@ class Chunk(Entity):
         time1 = time.perf_counter()
         if Client.connected:
             _pos = (self.position.x, self.position.y, self.position.z)
-            if (self.position[0], self.position[2]) in addedBlocks:
+            '''if (self.position[0], self.position[2]) in addedBlocks:
                 ourAdded = addedBlocks[(self.position[0], self.position[2])]
             else:
                 ourAdded = []
             if (self.position[0], self.position[2]) in deletedBlocks:
                 ourDeleted = deletedBlocks[(self.position[0], self.position[2])]
             else:
-                ourDeleted = []
-            Client.send_message("generate", [_pos, CHUNK_WIDTH, CHUNK_HEIGHT,ourAdded,ourDeleted])
+                ourDeleted = []'''
+            Client.send_message("generate", [_pos, CHUNK_WIDTH, CHUNK_HEIGHT])
 
     def render(self):
         time1 = time.perf_counter()
@@ -171,40 +171,30 @@ class Chunk(Entity):
     def deleteBlock(self, position):
         global deletedBlocks
         _position = [int(position.x), int(position.y), int(position.z)]
-        if self.blockIDs[_position[0], _position[1], _position[2]] != 0:
-            self.blockIDs[_position[0], _position[1], _position[2]] = 0
-        self.renderBlocks = self.renderBlocks[np.all(self.renderBlocks != _position, axis=1)]
-        if (self.position[0], self.position[2]) in deletedBlocks:
-            deletedBlocks[(self.position[0], self.position[2])].append(tuple(_position))
-        else:
-            deletedBlocks[(self.position[0], self.position[2])] = [tuple(_position)]
+        Client.send_message("deleteBlock", [_position, (self.position[0], self.position[2])])
         # update surrounding blocks
-        self.checkSurrounding(_position)
-        self.render()
+        #self.checkSurrounding(_position)
+        #self.render()
 
     def addBlock(self, position, id):
         global addedBlocks
         _position = [int(position.x), int(position.y), int(position.z)]
         if _position[0] > CHUNK_WIDTH:
-            getChunk((self.position[0] + 1, self.position[2])).addBlock(
-                Vec3(_position[0], _position[1], _position[2], ) - Vec3(CHUNK_WIDTH, 0, 0), id)
-        if _position[0] < 1:
-            getChunk((self.position[0] - 1, self.position[2])).addBlock(
-                Vec3(_position[0], _position[1], _position[2], ) + Vec3(CHUNK_WIDTH, 0, 0), id)
+            _position[0] -= CHUNK_WIDTH
+            Client.send_message("addBlock", [_position, id, (self.position[0] + 1, self.position[2])])
+        elif _position[0] < 1:
+            _position[0] += CHUNK_WIDTH
+            Client.send_message("addBlock", [_position, id, (self.position[0] - 1, self.position[2])])
         if _position[2] > CHUNK_WIDTH:
-            getChunk((self.position[0], self.position[2] + 1)).addBlock(
-                Vec3(_position[0], _position[1], _position[2], ) - Vec3(0, 0, CHUNK_WIDTH), id)
-        if _position[2] < 1:
-            getChunk((self.position[0], self.position[2] - 1)).addBlock(
-                Vec3(_position[0], _position[1], _position[2], ) + Vec3(0, 0, CHUNK_WIDTH), id)
-        if self.blockIDs[_position[0], _position[1], _position[2]] != id:
-            self.blockIDs[_position[0], _position[1], _position[2]] = id
-            if (self.position[0], self.position[2]) in addedBlocks:
-                addedBlocks[(self.position[0], self.position[2])].append((_position[0], _position[1], _position[2], id))
-            else:
-                addedBlocks[(self.position[0], self.position[2])] = [(_position[0], _position[1], _position[2], id)]
-        self.checkSurrounding(_position)
-        self.render()
+            _position[2] -= CHUNK_WIDTH
+            Client.send_message("addBlock", [_position, id, (self.position[0], self.position[2]+1)])
+        elif _position[2] < 1:
+            _position[2] += CHUNK_WIDTH
+            Client.send_message("addBlock", [_position, id, (self.position[0], self.position[2]-1)])
+        if 0 < _position[0] <= CHUNK_WIDTH and 0 < _position[2] <= CHUNK_WIDTH:
+            Client.send_message("addBlock", [_position, id, (self.position[0], self.position[2])])
+        #self.checkSurrounding(_position)
+        #self.render()
 
     def checkSurrounding(self, pos):
         chList = []
@@ -230,8 +220,6 @@ class Chunk(Entity):
                 ch = getChunk(tuple(chPos))
                 if ch not in chList and ch != self:
                     chList.append(ch)
-            # if not arreq_in_list(np.array(newpos), ch.renderBlocks):
-            #    ch.checkRenderable(tuple(newpos))
         for ch in chList:
             ch.render()
 
