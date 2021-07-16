@@ -14,12 +14,13 @@ coords = Text(text="", origin=(0.75, 0.75), background=True)
 load_model('block')
 
 fpc = FirstPersonController(x=0, y=256, z=0, height=1.7, jump_duration=0.2, jump_height=1.2)
-collision_zone = CollisionZone(parent=fpc, radius=32)
+collision_zone = CollisionZone(parent=fpc, radius=16)
 blockHighlight = Entity(model='wireframe_cube', thickness=3, visible=False, position=(0, 0, 0), scale=1.1,
                         color=color.rgba(64, 64, 64), origin=(0.45, 0.45, 0.45))
 
 @Client.event
 def recvChunkBlocks(Content):
+    time1 = time.perf_counter()
     pos = Content[0]
     print("Recieved a chunk ", pos)
     if pos in renderedChunkPos:
@@ -27,6 +28,7 @@ def recvChunkBlocks(Content):
         ch.blockIDs = Content[1]
         ch.isGenerated = True
         threading.Thread(ch.render(), daemon=True).start()
+    print("recv time:", time.perf_counter() - time1)
 
 @Client.event
 def preGenProgress(Content):
@@ -88,6 +90,7 @@ def input(key):
                                            lookingAt.z - ((CHUNK_WIDTH) * mouseChunk[1]) + mouse.normal.z), 1)
     if key == 'escape':
         Client.client.close()
+        p.terminate()
         exit(0)
 
 
@@ -142,5 +145,5 @@ while len(renderedChunks) < math.pow(RENDER_DISTANCE * 2 + 1, 2):
     doChunkRendering((0, 0))
     Client.process_net_events()
 
-fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[1, :, 1] != 0)) + 30
+fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 30
 app.run()
