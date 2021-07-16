@@ -17,20 +17,25 @@ fpc = FirstPersonController(x=0, y=256, z=0, height=1.7, jump_duration=0.2, jump
 collision_zone = CollisionZone(parent=fpc, radius=16)
 blockHighlight = Entity(model='wireframe_cube', thickness=3, visible=False, position=(0, 0, 0), scale=1.1,
                         color=color.rgba(64, 64, 64), origin=(0.45, 0.45, 0.45), unlit=True)
+sessionID = None
 
+otherPlayerEntities = dict()
 
 @Client.event
 def recvChunkBlocks(Content):
     time1 = time.perf_counter()
     pos = Content[0]
-    print("Recieved a chunk ", pos)
     if pos in renderedChunkPos:
         ch = getChunk(pos)
         ch.blockIDs = Content[1]
         ch.isGenerated = True
         threading.Thread(ch.render(), daemon=True).start()
-    print("recv time:", time.perf_counter() - time1)
 
+@Client.event
+def recvSessionId(Content):
+    print("Recieved session ID")
+    global sessionID
+    sessionID = Content
 
 @Client.event
 def preGenProgress(Content):
@@ -38,19 +43,40 @@ def preGenProgress(Content):
     total = Content[1]
     print("Server is pregenerating: ", prog, "/", total)
 
-
 @Client.event
 def serverPrint(Content):
     print(Content)
-
 
 @Client.event
 def onConnectionError(Reason):
     print(f"Error ! Reason : {Reason}")
 
+@Client.event
+def posUpdate(Content):
+    print("Recieved position update")
+    playerID = Content[0]
+    position = Content[1]
+    if not playerID == sessionID:
+        if abs(position[0] - fpc.position.x) < RENDER_DISTANCE * CHUNK_WIDTH and abs(position[2] - fpc.position.y) < RENDER_DISTANCE * CHUNK_WIDTH:
+            if not playerID in otherPlayerEntities:
+                otherPlayerEntities[playerID] = Entity(model='cube', color=color.red)
+            otherPlayerEntities[playerID].position = position
+
+@Client.event
+def playerJoined():
+    print("A player joined!")
+
+@Client.event
+def allPositions(Content):
+    print("All positions recieved")
+    for k in Content.keys():
+        if not k == sessionID:
+            if abs(Content[k][0] - fpc.position.x) < RENDER_DISTANCE * CHUNK_WIDTH and abs(Content[k][2] - fpc.position.z) < RENDER_DISTANCE * CHUNK_WIDTH:
+                if not k in otherPlayerEntities:
+                    otherPlayerEntities[k] = Entity(model='cube', color=color.red)
+                otherPlayerEntities[k].position = Content[k]
 
 dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x=45, rotation_y=45, rotation_z=45)
-
 
 def doChunkRendering(_currentChunk):
     # unload distant chunks
@@ -73,7 +99,6 @@ def doChunkRendering(_currentChunk):
         for i in chRange:
             if not i in renderedChunkPos:
                 if renderedChunks[-1].isGenerated:
-                    print("Generate " + str(i))
                     renderedChunkPos.append((i[0], i[1]))
                     renderedChunks.append(Chunk((i[0], i[1])))
                     # threading.Thread(renderedChunks[-1].generate(), daemon=True).start()
@@ -100,12 +125,15 @@ def input(key):
         p.terminate()
         exit(0)
 
+    if key == 'q':
+        mouse.locked = False
+
 
 chunkThread = threading.Thread()
-
+last_position = [0,0,0]
 
 def update():
-    global currentChunk, lookingAt, mouseChunk, chunkThread
+    global currentChunk, lookingAt, mouseChunk, chunkThread, last_position
     currentChunk = (math.floor(fpc.position[0] / CHUNK_WIDTH), math.floor(fpc.position[2] / CHUNK_WIDTH))
     doChunkRendering(currentChunk)
     if mouse.hovered_entity is not None and 1 < distance(mouse.point, fpc) < 10:
@@ -131,6 +159,10 @@ def update():
     dl.x = currentChunk[0] * CHUNK_WIDTH
     dl.z = currentChunk[1] * CHUNK_WIDTH
     Client.process_net_events()
+
+    if last_position != [fpc.position[0], fpc.position[1], fpc.position[2]]:
+        last_position = [fpc.position[0], fpc.position[1], fpc.position[2]]
+        Client.send_message("posUpdate", [sessionID, [fpc.position[0], fpc.position[1], fpc.position[2]]])
 
 
 # Start the server

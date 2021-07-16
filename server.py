@@ -17,10 +17,31 @@ CHUNK_HEIGHT = 256
 world_folder = "world"
 generateNew = True
 offsets = [random.randint(-65535,65535) for i in range(5)]
+players = dict()
+numPlayers = 0
 
 @Server.event
 def onClientConnected(Client):
+    global numPlayers
     print("Client connected")
+    numPlayers += 1
+    Client.send_message("recvSessionId", numPlayers)
+    Server.broadcast("allPositions", players)
+    players[numPlayers] = list()
+
+@Server.event
+def onClientDisconnected(Client):
+    global numPlayers
+    players.pop(numPlayers, None)
+    numPlayers -= 1
+
+@Server.event
+def posUpdate(Client, Content):
+    playerID = Content[0]
+    position = Content[1]
+    players[playerID] = position
+    print("position update")
+    Server.broadcast("posUpdate", [playerID, position])
 
 def fillCube(id, pos, chunk, xRange=0, yRange=0, zRange=0):
     for x in range(pos[0], pos[0] + xRange+1):
@@ -171,7 +192,7 @@ def addBlock(Client, Content):
     chunk = Content[2]
     #chunk_file = str(int(chunk[0])) + "," + str(int(chunk[2])) + "chunk.p"
     blockIDs[chunk][blockPos[0], blockPos[1], blockPos[2]] = blockID
-    Client.send_message("recvChunkBlocks", (chunk, blockIDs[chunk]))
+    Server.broadcast("recvChunkBlocks", (chunk, blockIDs[chunk]))
     #pickle.dump(blockIDs[chunk], open(world_folder + '\\' + chunk_file, "wb"))
 
 @Server.event
@@ -186,7 +207,7 @@ def deleteBlock(Client, Content):
     chunk = Content[1]
     #chunk_file = str(int(chunk[0])) + "," + str(int(chunk[2])) + "chunk.p"
     blockIDs[chunk][blockPos[0], blockPos[1], blockPos[2]] = 0
-    Client.send_message("recvChunkBlocks", (chunk, blockIDs[chunk]))
+    Server.broadcast("recvChunkBlocks", (chunk, blockIDs[chunk]))
     #pickle.dump(blockIDs[chunk], open(world_folder + '\\' + chunk_file, "wb"))
 
 @Server.event

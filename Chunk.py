@@ -120,7 +120,6 @@ class Chunk(Entity):
         global addedBlocks, deletedBlocks, Client
         if Client.connected:
             _pos = (int(self.position.x), int(self.position.y), int(self.position.z))
-            print("Client sending message " + str(_pos))
             Client.send_message("generate", [_pos, CHUNK_WIDTH, CHUNK_HEIGHT])
 
     def render(self):
@@ -138,7 +137,8 @@ class Chunk(Entity):
         self.collider = MeshCollider(self, mesh=self.model, center=Vec3(0, 0, 0))
         self.visible_self = True
         self.isRendered = True
-        print("render: " + str(time.perf_counter() - time1))
+        self.collider = MeshCollider(self, mesh=self.model, center=Vec3(0, 0, 0))
+        self.hasCollider = True
 
     def unrender(self):
         self.model = None
