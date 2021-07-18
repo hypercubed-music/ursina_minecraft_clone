@@ -5,6 +5,6 @@
 
 ## Required libraries
 
-ursina, ursinanetworking
+ursina, ursinanetworking,
 noise,
 numpy
