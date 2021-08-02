@@ -1,10 +1,8 @@
-import threading
-from ursina import *
 from ursina.prefabs.first_person_controller import FirstPersonController
-from client import GameClient
 
-RENDER_DISTANCE = 5
-BLOCK_TYPES = 2
+from Inventory import *
+
+RENDER_DISTANCE = 4
 
 app = Ursina()
 
@@ -12,10 +10,12 @@ from Chunk import *
 
 load_model('block')
 
-fpc = FirstPersonController(x=0, y=256, z=0, height=1.7, jump_duration=0.2, jump_height=1.2)
-collision_zone = CollisionZone(parent=fpc, radius=16)
+fpc = FirstPersonController(x=0.5, y=256, z=0.5, height=0.85, jump_duration=0.2, jump_height=1.2, gravity=0.8)
+#collision_zone = CollisionZone(parent=fpc, radius=16)
 blockHighlight = Entity(model='wireframe_cube', thickness=3, visible=False, position=(0, 0, 0), scale=1.1,
                         color=color.rgba(64, 64, 64), origin=(0.45, 0.45, 0.45), unlit=True)
+coordText = Text()
+inventory = Inventory(enabled=False)
 sessionID = None
 p = None
 otherPlayerEntities = dict()
@@ -26,7 +26,7 @@ def recvChunkBlocks(Content):
     pos = Content[0]
     if pos in renderedChunkPos:
         ch = getChunk(pos)
-        ch.blockIDs = pickle.loads(Content[1])
+        ch.blockIDs = Content[1]
         ch.isGenerated = True
         ch.render()
 
@@ -52,7 +52,6 @@ def onConnectionError(Reason):
 
 
 def posUpdate(Content):
-    print("Recieved position update")
     playerID = Content[0]
     position = Content[1]
     if not playerID == sessionID:
@@ -81,23 +80,20 @@ def allPositions(Content):
 #dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x=45, rotation_y=45, rotation_z=45)
 
 def doChunkRendering(_currentChunk):
-    # unload distant chunks
     xRange = range(_currentChunk[0] - RENDER_DISTANCE, _currentChunk[0] + RENDER_DISTANCE + 1)
     zRange = range(_currentChunk[1] - RENDER_DISTANCE, _currentChunk[1] + RENDER_DISTANCE + 1)
-    chRange = sorted(list(itertools.product(xRange, zRange)), key=lambda x: abs(x[0]) + abs(x[1]))
+    chRange = sorted(list(itertools.product(xRange, zRange)), key=lambda x: abs(x[0] - _currentChunk[0]) + abs(x[1] - _currentChunk[1]))
     for idx, chunk in enumerate(renderedChunkPos):
         if not (chunk[0] in xRange and chunk[1] in zRange):
             destroy(renderedChunks[idx])
             del renderedChunks[idx]
             del renderedChunkPos[idx]
-            break
+            client.send_message("unloadChunk", chunk)
+            return
 
     if len(renderedChunks) == 0:
         renderedChunkPos.append(chRange[0])
         renderedChunks.append(Chunk(chRange[0]))
-        # threading.Thread(renderedChunks[-1].generate(), daemon=True).start()
-        print("Generate 1")
-        print(client.connected())
         renderedChunks[-1].generate()
     else:
         for i in chRange:
@@ -105,12 +101,11 @@ def doChunkRendering(_currentChunk):
                 if renderedChunks[-1].isGenerated:
                     renderedChunkPos.append((i[0], i[1]))
                     renderedChunks.append(Chunk((i[0], i[1])))
-                    # threading.Thread(renderedChunks[-1].generate(), daemon=True).start()
                     renderedChunks[-1].generate()
-                    break
+                    return
 
-    if not renderedChunks[-1].hasCollider:
-        renderedChunks[-1].setCollider()
+    '''if not renderedChunks[-1].hasCollider:
+        renderedChunks[-1].setCollider()'''
         # recalculate shadows
         #dl.shadows = True
 
@@ -132,17 +127,22 @@ def input(key):
                 p.terminate()
             exit(0)
 
+
         if key == 'q':
             mouse.locked = False
 
+        if key == 'e':
+            inventory.enabled = not inventory.enabled
+            mouse.locked = not inventory.enabled
+            fpc.mouse_sensitivity = Vec2(0,0) if inventory.enabled else Vec2(40,40)
 
-chunkThread = threading.Thread()
+
 last_position = [0, 0, 0]
 isMenu = True
-
+lastNetTime = 0
 
 def update():
-    global currentChunk, lookingAt, mouseChunk, chunkThread, last_position
+    global currentChunk, lookingAt, mouseChunk, chunkThread, last_position, lastNetTime
     if not isMenu:
         currentChunk = (math.floor(fpc.position[0] / CHUNK_WIDTH), math.floor(fpc.position[2] / CHUNK_WIDTH))
         doChunkRendering(currentChunk)
@@ -157,12 +157,27 @@ def update():
             blockHighlight.visible = False
             lookingAt = None
 
+        '''if mouse.left and lookingAt is not None:
+            print("lmb")
+            getChunk(mouseChunk).deleteBlock(
+                Vec3(lookingAt.x - (CHUNK_WIDTH * mouseChunk[0]), lookingAt.y,
+                     lookingAt.z - (CHUNK_WIDTH * mouseChunk[1])))
+        elif mouse.right and lookingAt is not None:
+            getChunk(mouseChunk).addBlock(Vec3(lookingAt.x - ((CHUNK_WIDTH) * mouseChunk[0]) + mouse.normal.x,
+                                               lookingAt.y + mouse.normal.y,
+                                               lookingAt.z - ((CHUNK_WIDTH) * mouseChunk[1]) + mouse.normal.z), 1)'''
+
         if held_keys["control"]:
             fpc.speed = 10
             camera.fov = 110
         else:
             fpc.speed = 5
             camera.fov = 90
+
+        '''if held_keys["space"]:
+            fpc.y += 5 * time.dt
+        if held_keys["shift"]:
+            fpc.y -= 5 * time.dt'''
 
         #dl.x = currentChunk[0] * CHUNK_WIDTH
         #dl.z = currentChunk[1] * CHUNK_WIDTH
@@ -171,6 +186,8 @@ def update():
         if last_position != [fpc.position[0], fpc.position[1], fpc.position[2]]:
             last_position = [fpc.position[0], fpc.position[1], fpc.position[2]]
             client.send_message("posUpdate", [sessionID, [fpc.position[0], fpc.position[1], fpc.position[2]]])
+
+        coordText.text = str(int(fpc.position.x)) + ", " + str(int(fpc.position.y)) + ", " + str(int(fpc.position.z))
 
 sky = Sky(color="87ceeb", texture=None)
 
@@ -189,6 +206,7 @@ def addEvents():
     client.client.event(allPositions)
     client.client.event(playerJoined)
     client.client.event(posUpdate)
+    client.client.event(serverPrint)
 
 def startGame(worldName):
     global p, isMenu
@@ -200,7 +218,7 @@ def startGame(worldName):
     loadingText.text="Starting server"
     print("Starting server")
     print([sys.executable, 'server.py', worldName])
-    p = subprocess.Popen([sys.executable, 'server.py', worldName], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen([sys.executable, 'server.py', worldName],stdout=subprocess.DEVNULL,stderr=subprocess.STDOUT)
     # Start the server
     print("Started server")
     isMenu = False
@@ -217,7 +235,7 @@ def startGame(worldName):
         client.process_net_events()
     destroy(loadingText)
     fpc.enable()
-    fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 10
+    fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 30
     # app.run()
 
 def loadWorld(worldName):
@@ -256,7 +274,7 @@ def joinServer():
         client.process_net_events()
     destroy(loadingText)
     fpc.enable()
-    fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 10
+    fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 3
 
 def newWorldMenu():
     global isMenu
@@ -304,6 +322,9 @@ def showMenu():
 
 
 if __name__ == '__main__':
+    window.fps_counter.enabled = False
+    window.vsync = False
     isMenu = True
     showMenu()
     app.run()
+
