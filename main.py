@@ -77,7 +77,7 @@ def allPositions(Content):
                 otherPlayerEntities[k].position = Content[k]
 
 
-#dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x=45, rotation_y=45, rotation_z=45)
+dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x=45, rotation_y=45, rotation_z=45)
 
 def doChunkRendering(_currentChunk):
     xRange = range(_currentChunk[0] - RENDER_DISTANCE, _currentChunk[0] + RENDER_DISTANCE + 1)
@@ -104,10 +104,7 @@ def doChunkRendering(_currentChunk):
                     renderedChunks[-1].generate()
                     return
 
-    '''if not renderedChunks[-1].hasCollider:
-        renderedChunks[-1].setCollider()'''
-        # recalculate shadows
-        #dl.shadows = True
+    dl.shadows = True
 
 
 def input(key):
@@ -179,8 +176,8 @@ def update():
         if held_keys["shift"]:
             fpc.y -= 5 * time.dt'''
 
-        #dl.x = currentChunk[0] * CHUNK_WIDTH
-        #dl.z = currentChunk[1] * CHUNK_WIDTH
+        dl.x = currentChunk[0] * CHUNK_WIDTH
+        dl.z = currentChunk[1] * CHUNK_WIDTH
         client.process_net_events()
 
         if last_position != [fpc.position[0], fpc.position[1], fpc.position[2]]:

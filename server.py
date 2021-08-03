@@ -68,10 +68,7 @@ def unloadChunk(Client, Content):
     if chunk in changedChunks:
         pickle.dump(blockIDs[chunk], open(world_folder + '\\' + chunk_file, "wb"))
         changedChunks.remove(chunk)
-
-
-def encode_chunk(pos):
-    pass
+    print("Saving unloaded chunk")
 
 
 def fillCube(id, pos, chunk, xRange=0, yRange=0, zRange=0):
@@ -202,7 +199,7 @@ def _generate(position, chunkWidth, chunkHeight):
 
             if not path.exists(world_folder):
                 makedirs(world_folder)
-            #pickle.dump(blockIDs[(position[0], position[2])], open(world_folder + '\\' + chunk_file, "wb"))
+            pickle.dump(blockIDs[(position[0], position[2])], open(world_folder + '\\' + chunk_file, "wb"))
 
 
 @Server.event
@@ -261,7 +258,6 @@ def deleteBlock(Client, Content):
 @Server.event
 def sendPreGenProgress(prog, total):
     Server.broadcast("preGenProgress", [prog, total])
-
 
 if __name__ == "__main__":
     print("Hello")
