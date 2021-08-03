@@ -1,4 +1,4 @@
-from ursina.prefabs.first_person_controller import FirstPersonController
+from Player import *
 
 from Inventory import *
 
@@ -10,7 +10,7 @@ from Chunk import *
 
 load_model('block')
 
-fpc = FirstPersonController(x=0.5, y=256, z=0.5, height=0.85, jump_duration=0.2, jump_height=1.2, gravity=0.8)
+fpc = Player(x=0.5, y=256, z=0.5, height=0.85, jump_duration=0.2, jump_height=1.2, gravity=0.8)
 #collision_zone = CollisionZone(parent=fpc, radius=16)
 blockHighlight = Entity(model='wireframe_cube', thickness=3, visible=False, position=(0, 0, 0), scale=1.1,
                         color=color.rgba(64, 64, 64), origin=(0.45, 0.45, 0.45), unlit=True)
@@ -77,7 +77,7 @@ def allPositions(Content):
                 otherPlayerEntities[k].position = Content[k]
 
 
-dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x=45, rotation_y=45, rotation_z=45)
+#dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x=45, rotation_y=45, rotation_z=45)
 
 def doChunkRendering(_currentChunk):
     xRange = range(_currentChunk[0] - RENDER_DISTANCE, _currentChunk[0] + RENDER_DISTANCE + 1)
@@ -104,7 +104,7 @@ def doChunkRendering(_currentChunk):
                     renderedChunks[-1].generate()
                     return
 
-    dl.shadows = True
+    #dl.shadows = True
 
 
 def input(key):
@@ -176,8 +176,8 @@ def update():
         if held_keys["shift"]:
             fpc.y -= 5 * time.dt'''
 
-        dl.x = currentChunk[0] * CHUNK_WIDTH
-        dl.z = currentChunk[1] * CHUNK_WIDTH
+        #dl.x = currentChunk[0] * CHUNK_WIDTH
+        #dl.z = currentChunk[1] * CHUNK_WIDTH
         client.process_net_events()
 
         if last_position != [fpc.position[0], fpc.position[1], fpc.position[2]]:
@@ -232,7 +232,6 @@ def startGame(worldName):
         client.process_net_events()
     destroy(loadingText)
     fpc.enable()
-    fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 30
     # app.run()
 
 def loadWorld(worldName):
@@ -271,7 +270,8 @@ def joinServer():
         client.process_net_events()
     destroy(loadingText)
     fpc.enable()
-    fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 3
+    #fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 10
+    fpc.y = 256
 
 def newWorldMenu():
     global isMenu

@@ -88,7 +88,7 @@ class Chunk(Entity):
         self.uvs = None
         self.norms = list()
         #self.color = color.rgb(random.randint(128, 255), random.randint(128, 255), random.randint(128, 255))
-        self.shader = lit_with_shadows_shader
+        #self.shader = lit_with_shadows_shader
 
     def getRenderable(self):
         # Get a list of renderable blocks
