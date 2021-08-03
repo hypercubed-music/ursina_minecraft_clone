@@ -55,9 +55,6 @@ class Player(Entity):
                 if not self.grounded:
                     self.land()
                 self.grounded = True
-                '''if ray.world_normal is not None:
-                    if ray.world_normal.y > .7 and ray.world_point.y - self.world_y < .5: # walk up slope
-                        self.y = ray.world_point[1]'''
             else:
                 self.grounded = False
 

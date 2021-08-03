@@ -75,7 +75,7 @@ def getChunk(pos):
         return renderedChunks[renderedChunkPos.index(pos)]
 
 class Chunk(Entity):
-    def __init__(self, position=(0, 0), seed=0):
+    def __init__(self, position=(0, 0), shadows=False):
         super().__init__(visible_self=False, position=(position[0] * CHUNK_WIDTH, 0, position[1] * CHUNK_WIDTH))
         self.renderBlocks = list()
         # self.renderFaces = list()
@@ -88,7 +88,8 @@ class Chunk(Entity):
         self.uvs = None
         self.norms = list()
         #self.color = color.rgb(random.randint(128, 255), random.randint(128, 255), random.randint(128, 255))
-        #self.shader = lit_with_shadows_shader
+        if shadows:
+            self.shader = lit_with_shadows_shader
 
     def getRenderable(self):
         # Get a list of renderable blocks

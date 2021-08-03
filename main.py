@@ -2,16 +2,16 @@ from Player import *
 
 from Inventory import *
 
-RENDER_DISTANCE = 4
-
 app = Ursina()
 
 from Chunk import *
 
 load_model('block')
 
+options = {"renderDistance": 4, "shadows": False, }
+
 fpc = Player(x=0.5, y=256, z=0.5, height=0.85, jump_duration=0.2, jump_height=1.2, gravity=0.8)
-#collision_zone = CollisionZone(parent=fpc, radius=16)
+# collision_zone = CollisionZone(parent=fpc, radius=16)
 blockHighlight = Entity(model='wireframe_cube', thickness=3, visible=False, position=(0, 0, 0), scale=1.1,
                         color=color.rgba(64, 64, 64), origin=(0.45, 0.45, 0.45), unlit=True)
 coordText = Text()
@@ -55,8 +55,8 @@ def posUpdate(Content):
     playerID = Content[0]
     position = Content[1]
     if not playerID == sessionID:
-        if abs(position[0] - fpc.position.x) < RENDER_DISTANCE * CHUNK_WIDTH and abs(
-                position[2] - fpc.position.y) < RENDER_DISTANCE * CHUNK_WIDTH:
+        if abs(position[0] - fpc.position.x) < options["renderDistance"] * CHUNK_WIDTH and abs(
+                position[2] - fpc.position.y) < options["renderDistance"] * CHUNK_WIDTH:
             if not playerID in otherPlayerEntities:
                 otherPlayerEntities[playerID] = Entity(model='cube', color=color.red)
             otherPlayerEntities[playerID].position = position
@@ -70,19 +70,21 @@ def allPositions(Content):
     print("All positions recieved")
     for k in Content.keys():
         if not k == sessionID:
-            if abs(Content[k][0] - fpc.position.x) < RENDER_DISTANCE * CHUNK_WIDTH and abs(
-                    Content[k][2] - fpc.position.z) < RENDER_DISTANCE * CHUNK_WIDTH:
+            if abs(Content[k][0] - fpc.position.x) < options["renderDistance"] * CHUNK_WIDTH and abs(
+                    Content[k][2] - fpc.position.z) < options["renderDistance"] * CHUNK_WIDTH:
                 if not k in otherPlayerEntities:
                     otherPlayerEntities[k] = Entity(model='cube', color=color.red)
                 otherPlayerEntities[k].position = Content[k]
 
 
-#dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x=45, rotation_y=45, rotation_z=45)
+dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x=45, rotation_y=45, rotation_z=45, enabled=False)
+al = AmbientLight(enabled=True)
 
 def doChunkRendering(_currentChunk):
-    xRange = range(_currentChunk[0] - RENDER_DISTANCE, _currentChunk[0] + RENDER_DISTANCE + 1)
-    zRange = range(_currentChunk[1] - RENDER_DISTANCE, _currentChunk[1] + RENDER_DISTANCE + 1)
-    chRange = sorted(list(itertools.product(xRange, zRange)), key=lambda x: abs(x[0] - _currentChunk[0]) + abs(x[1] - _currentChunk[1]))
+    xRange = range(_currentChunk[0] - options["renderDistance"], _currentChunk[0] + options["renderDistance"] + 1)
+    zRange = range(_currentChunk[1] - options["renderDistance"], _currentChunk[1] + options["renderDistance"] + 1)
+    chRange = sorted(list(itertools.product(xRange, zRange)),
+                     key=lambda x: abs(x[0] - _currentChunk[0]) + abs(x[1] - _currentChunk[1]))
     for idx, chunk in enumerate(renderedChunkPos):
         if not (chunk[0] in xRange and chunk[1] in zRange):
             destroy(renderedChunks[idx])
@@ -93,7 +95,7 @@ def doChunkRendering(_currentChunk):
 
     if len(renderedChunks) == 0:
         renderedChunkPos.append(chRange[0])
-        renderedChunks.append(Chunk(chRange[0]))
+        renderedChunks.append(Chunk(chRange[0], options["shadows"]))
         renderedChunks[-1].generate()
     else:
         for i in chRange:
@@ -104,11 +106,11 @@ def doChunkRendering(_currentChunk):
                     renderedChunks[-1].generate()
                     return
 
-    #dl.shadows = True
+    dl.shadows = True
 
 
 def input(key):
-    global mouseChunk, lookingAt, p
+    global mouseChunk, lookingAt, p, isMenu
     if not isMenu:
         if key == "left mouse down" and lookingAt is not None:
             getChunk(mouseChunk).deleteBlock(
@@ -119,11 +121,14 @@ def input(key):
                                                lookingAt.y + mouse.normal.y,
                                                lookingAt.z - ((CHUNK_WIDTH) * mouseChunk[1]) + mouse.normal.z), 1)
         if key == 'escape':
-            client.client.client.close()
+            ingameOptionsMenu()
+            mouse.locked = False
+            fpc.mouse_sensitivity = Vec2(0, 0)
+            isMenu = True
+            '''client.client.client.close()
             if p is not None:
                 p.terminate()
-            exit(0)
-
+            exit(0)'''
 
         if key == 'q':
             mouse.locked = False
@@ -131,12 +136,20 @@ def input(key):
         if key == 'e':
             inventory.enabled = not inventory.enabled
             mouse.locked = not inventory.enabled
-            fpc.mouse_sensitivity = Vec2(0,0) if inventory.enabled else Vec2(40,40)
-
+            fpc.mouse_sensitivity = Vec2(0, 0) if inventory.enabled else Vec2(40, 40)
+    else:
+        if key == 'escape':
+            mouse.locked = True
+            renderDistanceSlider.disable()
+            toggleShadowsButton.disable()
+            quitButton.disable()
+            fpc.mouse_sensitivity = Vec2(40, 40)
+            isMenu = False
 
 last_position = [0, 0, 0]
 isMenu = True
 lastNetTime = 0
+
 
 def update():
     global currentChunk, lookingAt, mouseChunk, chunkThread, last_position, lastNetTime
@@ -176,8 +189,8 @@ def update():
         if held_keys["shift"]:
             fpc.y -= 5 * time.dt'''
 
-        #dl.x = currentChunk[0] * CHUNK_WIDTH
-        #dl.z = currentChunk[1] * CHUNK_WIDTH
+        dl.x = currentChunk[0] * CHUNK_WIDTH
+        dl.z = currentChunk[1] * CHUNK_WIDTH
         client.process_net_events()
 
         if last_position != [fpc.position[0], fpc.position[1], fpc.position[2]]:
@@ -190,11 +203,47 @@ sky = Sky(color="87ceeb", texture=None)
 
 ipAddress = "localhost"
 loadingText = Text("Starting server", enabled=False)
-newWorldButton = Button("Create World", scale=(0.5, 0.5))
+newWorldButton = Button("Create World", scale=(0.5, 0.1), y=0.1)
 worldNameText = TextField(text='New World')
-joinServerButton = Button("Joni Server", scale=(0.5, 0.5))
+joinServerButton = Button("Join Server", scale=(0.5, 0.1), y=0.1)
 serverIPText = TextField(text='localhost')
 loadWorldButtons = None
+
+def setRenderDistance():
+    options["renderDistance"] = int(renderDistanceSlider.value)
+
+def setShadows():
+    print(options["shadows"])
+    options["shadows"] = not options["shadows"]
+    toggleShadowsButton.text = "Shadows: " + str(options["shadows"])
+    if options["shadows"]:
+        dl.enable()
+        al.disable()
+        for ch in renderedChunks:
+            ch.shader = lit_with_shadows_shader
+    else:
+        dl.disable()
+        al.enable()
+        for ch in renderedChunks:
+            ch.shader = None
+
+def quitGame():
+    global renderedChunks, renderedChunkPos, isMenu
+    client.send_message("playerQuit", sessionID)
+    if p is not None:
+        client.send_message("stop", "")
+    for ch in renderedChunks:
+        destroy(ch)
+    renderedChunks = []
+    renderedChunkPos = []
+    isMenu = True
+    coordText.disable()
+    quitButton.disable()
+    showMenu()
+
+renderDistanceSlider = ThinSlider(min=2, max=16, step=1, text="Render Distance", enabled=False, on_value_changed=setRenderDistance, y=0.1)
+toggleShadowsButton = Button(text="Shadows: " + str(options["shadows"]), scale=(0.5,0.1), y=0, on_click=setShadows, enabled=False)
+quitButton = Button(text="Save and Quit", scale=(0.5,0.1), y=-0.2, on_click=quitGame, enabled=False)
 
 def addEvents():
     client.client.event(recvChunkBlocks)
@@ -205,17 +254,19 @@ def addEvents():
     client.client.event(posUpdate)
     client.client.event(serverPrint)
 
+
 def startGame(worldName):
     global p, isMenu
     print(worldName)
     addEvents()
     newWorldButton.disable()
     worldNameText.disable()
+    optionsBackButton.disable()
     loadingText.enable()
-    loadingText.text="Starting server"
+    loadingText.text = "Starting server"
     print("Starting server")
     print([sys.executable, 'server.py', worldName])
-    p = subprocess.Popen([sys.executable, 'server.py', worldName],stdout=subprocess.DEVNULL,stderr=subprocess.STDOUT)
+    p = subprocess.Popen([sys.executable, 'server.py', worldName], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     # Start the server
     print("Started server")
     isMenu = False
@@ -232,7 +283,9 @@ def startGame(worldName):
         client.process_net_events()
     destroy(loadingText)
     fpc.enable()
+    fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 30
     # app.run()
+
 
 def loadWorld(worldName):
     if loadWorldButtons is not None:
@@ -241,6 +294,7 @@ def loadWorld(worldName):
     client.connect('localhost')
     startGame(worldName)
 
+
 def newWorld():
     worldName = worldNameText.text
     worldNameText.disable()
@@ -248,6 +302,7 @@ def newWorld():
     print("Starting client")
     client.connect('localhost')
     startGame(worldName)
+
 
 def joinServer():
     global ipAddress, isMenu
@@ -270,8 +325,7 @@ def joinServer():
         client.process_net_events()
     destroy(loadingText)
     fpc.enable()
-    #fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 10
-    fpc.y = 256
+
 
 def newWorldMenu():
     global isMenu
@@ -280,6 +334,8 @@ def newWorldMenu():
     newWorldButton.on_click = newWorld
     newWorldButton.enable()
     worldNameText.enable()
+    optionsBackButton.enable()
+
 
 def loadWorldMenu():
     global isMenu, loadWorldButtons
@@ -291,7 +347,23 @@ def loadWorldMenu():
         worldButtonList[f] = Func(loadWorld, f)
     print(worldButtonList)
     loadWorldButtons = ButtonList(worldButtonList)
+    optionsBackButton.enable()
 
+
+def optionsMenu():
+    global isMenu
+    isMenu = True
+    renderDistanceSlider.enable()
+    toggleShadowsButton.enable()
+    optionsBackButton.enable()
+    mainMenu.disable()
+
+def ingameOptionsMenu():
+    global isMenu
+    isMenu = True
+    renderDistanceSlider.enable()
+    toggleShadowsButton.enable()
+    quitButton.enable()
 
 def joinServerMenu():
     global isMenu
@@ -300,12 +372,11 @@ def joinServerMenu():
     serverIPText.enable()
     joinServerButton.enable()
     joinServerButton.on_click = joinServer
+    optionsBackButton.enable()
 
 
-mainMenu = ButtonList({'New World': newWorldMenu, 'Load World': loadWorldMenu, 'Join Server': joinServerMenu},
-                      enabled=False,
-                      button_height=10)
-
+mainMenu = ButtonList({'New World': newWorldMenu, 'Load World': loadWorldMenu, 'Join Server': joinServerMenu, 'Options': optionsMenu},
+                      enabled=False)
 
 def showMenu():
     isMenu = True
@@ -315,8 +386,14 @@ def showMenu():
     worldNameText.disable()
     joinServerButton.disable()
     serverIPText.disable()
+    renderDistanceSlider.disable()
+    toggleShadowsButton.disable()
+    optionsBackButton.disable()
+    if loadWorldButtons is not None:
+        loadWorldButtons.disable()
     mainMenu.enable()
 
+optionsBackButton = Button(text="Back", on_click=showMenu, scale=0.1, y=-0.1)
 
 if __name__ == '__main__':
     window.fps_counter.enabled = False
@@ -324,4 +401,3 @@ if __name__ == '__main__':
     isMenu = True
     showMenu()
     app.run()
-

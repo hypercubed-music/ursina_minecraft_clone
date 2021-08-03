@@ -40,16 +40,29 @@ def onClientConnected(Client):
     global numPlayers
     print("Client connected")
     numPlayers += 1
-    Client.send_message("recvSessionId", numPlayers)
+    newSessionID = max(players.keys()) + 1
+    Client.send_message("recvSessionId", newSessionID)
     Server.broadcast("allPositions", players)
-    players[numPlayers] = list()
+    players[newSessionID] = list()
 
 
-@Server.event
+''''@Server.event
 def onClientDisconnected(Client):
     global numPlayers
     players.pop(numPlayers, None)
+    numPlayers -= 1'''
+
+@Server.event
+def playerQuit(Client, sessionID):
+    global numPlayers
+    players.pop(sessionID, None)
     numPlayers -= 1
+    if numPlayers == 0:
+        print("No more players. Saving all chunks...")
+        for chunk in changedChunks:
+            chunkFile = str(int(chunk[0])) + "," + str(int(chunk[2])) + "chunk.p"
+            pickle.dump(blockIDs[chunk], open(world_folder + '\\' + chunk_file, "wb"))
+            changedChunks.remove(chunk)
 
 
 @Server.event
@@ -253,6 +266,15 @@ def deleteBlock(Client, Content):
         changedChunks.append(chunk)
     # pickle.dump(blockIDs[chunk], open(world_folder + '\\' + chunk_file, "wb"))
 
+
+@Server.event
+def stop(Client, Content):
+    print("Saving all chunks...")
+    for chunk in changedChunks:
+        chunkFile = str(int(chunk[0])) + "," + str(int(chunk[2])) + "chunk.p"
+        pickle.dump(blockIDs[chunk], open(world_folder + '\\' + chunk_file, "wb"))
+        changedChunks.remove(chunk)
+    exit(0)
 
 @Server.event
 def sendPreGenProgress(prog, total):
