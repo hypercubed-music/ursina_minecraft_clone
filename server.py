@@ -9,7 +9,6 @@ from pynoise.noisemodule import *
 from pynoise.noiseutil import *
 
 import numpy as np
-from noise import *
 from ursinanetworking import *
 
 Server = UrsinaNetworkingServer("localhost", 25565)
