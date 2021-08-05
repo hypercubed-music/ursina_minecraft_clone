@@ -22,11 +22,13 @@ otherPlayerEntities = dict()
 
 
 def recvChunkBlocks(Content):
-    print("received chunk")
     pos = Content[0]
     if pos in renderedChunkPos:
         ch = getChunk(pos)
-        ch.blockIDs = Content[1]
+        if not Content[2]:
+            ch.blockIDs = Content[1]
+        else:
+            ch.blockIDs = np.zeros((CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2, CHUNK_WIDTH + 2), dtype='int8')
         ch.isGenerated = True
         ch.render()
 
@@ -56,7 +58,7 @@ def posUpdate(Content):
     position = Content[1]
     if not playerID == sessionID:
         if abs(position[0] - fpc.position.x) < options["renderDistance"] * CHUNK_WIDTH and abs(
-                position[2] - fpc.position.y) < options["renderDistance"] * CHUNK_WIDTH:
+                position[2] - fpc.position.z) < options["renderDistance"] * CHUNK_WIDTH:
             if not playerID in otherPlayerEntities:
                 otherPlayerEntities[playerID] = Entity(model='cube', color=color.red)
             otherPlayerEntities[playerID].position = position
@@ -77,21 +79,28 @@ def allPositions(Content):
                 otherPlayerEntities[k].position = Content[k]
 
 
-dl = DirectionalLight(y=2, z=3, shadows=True, rotation_x=45, rotation_y=45, rotation_z=45, enabled=False)
+dl = DirectionalLight(shadows=True, rotation_x=45, rotation_y=45, rotation_z=45, enabled=False, shadow_map_resolution=(4096, 4096))
 al = AmbientLight(enabled=True)
 
 def doChunkRendering(_currentChunk):
     xRange = range(_currentChunk[0] - options["renderDistance"], _currentChunk[0] + options["renderDistance"] + 1)
-    zRange = range(_currentChunk[1] - options["renderDistance"], _currentChunk[1] + options["renderDistance"] + 1)
-    chRange = sorted(list(itertools.product(xRange, zRange)),
-                     key=lambda x: abs(x[0] - _currentChunk[0]) + abs(x[1] - _currentChunk[1]))
+    yRange = range(_currentChunk[1] - options["renderDistance"], _currentChunk[1] + options["renderDistance"] + 1)
+    zRange = range(_currentChunk[2] - options["renderDistance"], _currentChunk[2] + options["renderDistance"] + 1)
+    chRange = sorted(list(itertools.product(xRange, yRange, zRange)),
+                     key=lambda x: abs(x[0] - _currentChunk[0]) + abs(x[1] - _currentChunk[1]) + abs(x[2] - _currentChunk[2]))
     for idx, chunk in enumerate(renderedChunkPos):
-        if not (chunk[0] in xRange and chunk[1] in zRange):
+        if not (chunk[0] in xRange and chunk[1] in yRange and chunk[2] in zRange):
             destroy(renderedChunks[idx])
             del renderedChunks[idx]
             del renderedChunkPos[idx]
             client.send_message("unloadChunk", chunk)
             return
+
+    '''if len(renderedChunks) != 0:
+        for ch in renderedChunks:
+            if not ch.hasCollider and ch.isRendered:
+                ch.setCollider()
+                return'''
 
     if len(renderedChunks) == 0:
         renderedChunkPos.append(chRange[0])
@@ -101,8 +110,8 @@ def doChunkRendering(_currentChunk):
         for i in chRange:
             if not i in renderedChunkPos:
                 if renderedChunks[-1].isGenerated:
-                    renderedChunkPos.append((i[0], i[1]))
-                    renderedChunks.append(Chunk((i[0], i[1])))
+                    renderedChunkPos.append((i[0], i[1], i[2]))
+                    renderedChunks.append(Chunk((i[0], i[1], i[2]), options["shadows"]))
                     renderedChunks[-1].generate()
                     return
 
@@ -114,12 +123,12 @@ def input(key):
     if not isMenu:
         if key == "left mouse down" and lookingAt is not None:
             getChunk(mouseChunk).deleteBlock(
-                Vec3(lookingAt.x - (CHUNK_WIDTH * mouseChunk[0]), lookingAt.y,
-                     lookingAt.z - (CHUNK_WIDTH * mouseChunk[1])))
+                Vec3(lookingAt.x - (CHUNK_WIDTH * mouseChunk[0]), lookingAt.y - (CHUNK_HEIGHT * mouseChunk[1]),
+                     lookingAt.z - (CHUNK_WIDTH * mouseChunk[2])))
         elif key == "right mouse down" and lookingAt is not None:
-            getChunk(mouseChunk).addBlock(Vec3(lookingAt.x - ((CHUNK_WIDTH) * mouseChunk[0]) + mouse.normal.x,
-                                               lookingAt.y + mouse.normal.y,
-                                               lookingAt.z - ((CHUNK_WIDTH) * mouseChunk[1]) + mouse.normal.z), 1)
+            getChunk(mouseChunk).addBlock(Vec3(lookingAt.x - (CHUNK_WIDTH * mouseChunk[0]) + mouse.normal.x,
+                                               lookingAt.y - (CHUNK_HEIGHT * mouseChunk[1]) + mouse.normal.y,
+                                               lookingAt.z - (CHUNK_WIDTH * mouseChunk[2]) + mouse.normal.z), 1)
         if key == 'escape':
             ingameOptionsMenu()
             mouse.locked = False
@@ -154,15 +163,15 @@ lastNetTime = 0
 def update():
     global currentChunk, lookingAt, mouseChunk, chunkThread, last_position, lastNetTime
     if not isMenu:
-        currentChunk = (math.floor(fpc.position[0] / CHUNK_WIDTH), math.floor(fpc.position[2] / CHUNK_WIDTH))
+        currentChunk = (math.floor(fpc.position[0] / CHUNK_WIDTH), math.floor(fpc.position[1] / CHUNK_HEIGHT), math.floor(fpc.position[2] / CHUNK_WIDTH))
         doChunkRendering(currentChunk)
-        if mouse.hovered_entity is not None and 1 < distance(mouse.point, fpc) < 10:
+        if mouse.hovered_entity is not None and distance(mouse.point, fpc) < 10:
             blockHighlight.visible = True
             lookingAt = Vec3(math.floor(mouse.world_point.x - 0.5 * mouse.normal.x),
                              math.floor(mouse.world_point.y - 0.5 * mouse.normal.y),
                              math.floor(mouse.world_point.z - 0.5 * mouse.normal.z))
             blockHighlight.position = lookingAt + Vec3(1, 1, 1)
-            mouseChunk = (math.floor((lookingAt[0] - 1) / CHUNK_WIDTH), math.floor((lookingAt[2] - 1) / CHUNK_WIDTH))
+            mouseChunk = (math.floor((lookingAt[0] - 1) / CHUNK_WIDTH),math.floor((lookingAt[1] - 1) / CHUNK_HEIGHT), math.floor((lookingAt[2] - 1) / CHUNK_WIDTH))
         else:
             blockHighlight.visible = False
             lookingAt = None
@@ -189,8 +198,8 @@ def update():
         if held_keys["shift"]:
             fpc.y -= 5 * time.dt'''
 
-        dl.x = currentChunk[0] * CHUNK_WIDTH
-        dl.z = currentChunk[1] * CHUNK_WIDTH
+        #dl.x = currentChunk[0] * CHUNK_WIDTH
+        #dl.z = currentChunk[1] * CHUNK_WIDTH
         client.process_net_events()
 
         if last_position != [fpc.position[0], fpc.position[1], fpc.position[2]]:
@@ -211,9 +220,9 @@ loadWorldButtons = None
 
 def setRenderDistance():
     options["renderDistance"] = int(renderDistanceSlider.value)
+    scene.fog_density = ((options["renderDistance"]-1) * CHUNK_WIDTH, options["renderDistance"] * CHUNK_WIDTH)
 
 def setShadows():
-    print(options["shadows"])
     options["shadows"] = not options["shadows"]
     toggleShadowsButton.text = "Shadows: " + str(options["shadows"])
     if options["shadows"]:
@@ -228,12 +237,15 @@ def setShadows():
             ch.shader = None
 
 def quitGame():
-    global renderedChunks, renderedChunkPos, isMenu
+    global renderedChunks, renderedChunkPos, isMenu, p
     client.send_message("playerQuit", sessionID)
     if p is not None:
         client.send_message("stop", "")
     for ch in renderedChunks:
         destroy(ch)
+    for p in otherPlayerEntities:
+        destroy(p)
+    destroy(blockHighlight)
     renderedChunks = []
     renderedChunkPos = []
     isMenu = True
@@ -257,7 +269,6 @@ def addEvents():
 
 def startGame(worldName):
     global p, isMenu
-    print(worldName)
     addEvents()
     newWorldButton.disable()
     worldNameText.disable()
@@ -279,11 +290,12 @@ def startGame(worldName):
     print("Loading world...")
     loadingText.text = "Loading world..."
     while len(renderedChunks) < 2:
-        doChunkRendering((0, 0))
+        doChunkRendering((0, 0, 0))
         client.process_net_events()
     destroy(loadingText)
     fpc.enable()
-    fpc.y = max(np.argwhere(getChunk((0, 0)).blockIDs[0, :, 0] != 0)) + 30
+    #fpc.y = max(np.argwhere(getChunk((0, 0, 0)).blockIDs[0, :, 0] != 0)) + 30
+    fpc.y = 64
     # app.run()
 
 
@@ -309,6 +321,7 @@ def joinServer():
     ipAddress = serverIPText.text
     serverIPText.disable()
     joinServerButton.disable()
+    optionsBackButton.disable()
     client.connect(ipAddress)
     addEvents()
     isMenu = False
@@ -321,7 +334,7 @@ def joinServer():
     print("Loading world...")
     loadingText.text = "Loading world..."
     while len(renderedChunks) < 2:
-        doChunkRendering((0, 0))
+        doChunkRendering((0, 0, 0))
         client.process_net_events()
     destroy(loadingText)
     fpc.enable()
@@ -345,7 +358,6 @@ def loadWorldMenu():
     worldButtonList = dict()
     for f in worldFolders:
         worldButtonList[f] = Func(loadWorld, f)
-    print(worldButtonList)
     loadWorldButtons = ButtonList(worldButtonList)
     optionsBackButton.enable()
 
@@ -397,7 +409,10 @@ optionsBackButton = Button(text="Back", on_click=showMenu, scale=0.1, y=-0.1)
 
 if __name__ == '__main__':
     window.fps_counter.enabled = False
-    window.vsync = False
     isMenu = True
     showMenu()
+    scene.fog_density = ((options["renderDistance"]-1) * CHUNK_WIDTH, options["renderDistance"] * CHUNK_WIDTH)
+    print(scene.fog_color)
+    scene.fog_color = Vec4(135/255, 206/255, 235/255, 1)
+    fpc.add_script(NoclipMode(require_key='r'))
     app.run()

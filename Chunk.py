@@ -7,7 +7,7 @@ from ursina.shaders import *
 from client import GameClient
 
 CHUNK_WIDTH = 16
-CHUNK_HEIGHT = 256
+CHUNK_HEIGHT = 16
 TEXIMGHEIGHT = 16
 TEXIMGWIDTH = 32
 
@@ -15,11 +15,12 @@ blockTex = load_texture('assets/atlas.png')
 # texOffsets = [None, (0,1), (0,0), (1,0), (1,1)]
 texFaceOffsets = np.array([[(0, 31), (0, 31), (0, 31), (0, 31), (0, 31), (0, 31)],  # air?
                            [(19, 31) for x in range(6)],  # stone
-                           [(11, 30) for x in range(6)], # dirt
+                           [(11, 30) for x in range(6)],  # dirt
                            [(3, 31), (3, 31), (3, 31), (3, 31), (11, 30), (2, 31)],  # grass
+                           # [(2, 31) for i in range(6)],
                            [(28, 29), (28, 29), (28, 29), (28, 29), (29, 29), (29, 29)],  # wood
                            [(22, 27) for x in range(6)],  # leaves
-                           [(23, 22) for x in range(6)], # wool
+                           [(23, 22) for x in range(6)],  # wool
                            [(23, 22) for x in range(6)],
                            [(24, 22) for x in range(6)],
                            [(25, 22) for x in range(6)],
@@ -67,45 +68,52 @@ lookingAt = Vec3()
 addedBlocks = dict()
 deletedBlocks = dict()
 
-#Client = UrsinaNetworkingClient("localhost", 25565)
+# Client = UrsinaNetworkingClient("localhost", 25565)
 client = GameClient("localhost", 25565)
+
 
 def getChunk(pos):
     if pos in renderedChunkPos:
         return renderedChunks[renderedChunkPos.index(pos)]
 
+
 class Chunk(Entity):
-    def __init__(self, position=(0, 0), shadows=False):
-        super().__init__(visible_self=False, position=(position[0] * CHUNK_WIDTH, 0, position[1] * CHUNK_WIDTH))
+    def __init__(self, position=(0, 0, 0), shadows=False):
+        super().__init__(visible_self=False,
+                         position=(position[0] * CHUNK_WIDTH, position[1] * CHUNK_HEIGHT, position[2] * CHUNK_WIDTH))
         self.renderBlocks = list()
         # self.renderFaces = list()
-        self.blockIDs = np.zeros((CHUNK_WIDTH + 2, CHUNK_HEIGHT, CHUNK_WIDTH + 2), dtype='uint8')
-        self.position = np.array([position[0], 0, position[1]])
+        self.blockIDs = np.zeros((CHUNK_WIDTH + 2, CHUNK_HEIGHT + 2, CHUNK_WIDTH + 2), dtype='uint8')
+        self.position = np.array([position[0], position[1], position[2]])
         self.isGenerated = False
         self.isRendered = False
         self.hasCollider = False
         self.verts = None
         self.uvs = None
         self.norms = list()
-        #self.color = color.rgb(random.randint(128, 255), random.randint(128, 255), random.randint(128, 255))
+        # self.color = color.rgb(random.randint(128, 255), random.randint(128, 255), random.randint(128, 255))
         if shadows:
             self.shader = lit_with_shadows_shader
 
     def getRenderable(self):
-        # Get a list of renderable blocks
+        # Get a list of renderable faces
         mask = (self.blockIDs == 0)
         right = np.argwhere(mask[1:] & (self.blockIDs[:-1] != 0))
-        right = right[(right[:,0] > 0) & (right[:,0] <= CHUNK_WIDTH) & (right[:,2] > 0) & (right[:,2] <= CHUNK_WIDTH)]
+        right = right[(right[:, 0] > 0) & (right[:, 0] <= CHUNK_WIDTH)
+                      & (right[:, 1] > 0) & (right[:, 1] <= CHUNK_HEIGHT)
+                      & (right[:, 2] > 0) & (right[:, 2] <= CHUNK_WIDTH)]
         left = np.argwhere(mask[:-1] & (self.blockIDs[1:] != 0)) + np.array([1, 0, 0])
-        left = left[(left[:, 0] > 0) & (left[:, 0] <= CHUNK_WIDTH) & (left[:, 2] > 0) & (left[:, 2] <= CHUNK_WIDTH)]
+        left = left[(left[:, 0] > 0) & (left[:, 0] <= CHUNK_WIDTH) & (left[:, 1] > 0) & (left[:, 1] <= CHUNK_HEIGHT) & (left[:, 2] > 0) & (left[:, 2] <= CHUNK_WIDTH)]
         top = np.argwhere(mask[:, 1:] & (self.blockIDs[:, :-1] != 0))
-        top = top[(top[:, 0] > 0) & (top[:, 0] <= CHUNK_WIDTH) & (top[:, 2] > 0) & (top[:, 2] <= CHUNK_WIDTH)]
+        top = top[(top[:, 0] > 0) & (top[:, 0] <= CHUNK_WIDTH) & (top[:, 1] > 0) & (top[:, 1] <= CHUNK_HEIGHT) & (top[:, 2] > 0) & (top[:, 2] <= CHUNK_WIDTH)]
         bottom = np.argwhere(mask[:, :-1] & (self.blockIDs[:, 1:] != 0)) + np.array([0, 1, 0])
-        bottom = bottom[(bottom[:, 0] > 0) & (bottom[:, 0] <= CHUNK_WIDTH) & (bottom[:, 2] > 0) & (bottom[:, 2] <= CHUNK_WIDTH)]
+        bottom = bottom[
+            (bottom[:, 0] > 0) & (bottom[:, 0] <= CHUNK_WIDTH) & (bottom[:, 1] > 0) & (bottom[:, 1] <= CHUNK_HEIGHT) & (bottom[:, 2] > 0) & (bottom[:, 2] <= CHUNK_WIDTH)]
         front = np.argwhere(mask[:, :, 1:] & (self.blockIDs[:, :, :-1] != 0))
-        front = front[(front[:, 0] > 0) & (front[:, 0] <= CHUNK_WIDTH) & (front[:, 2] > 0) & (front[:, 2] <= CHUNK_WIDTH)]
+        front = front[
+            (front[:, 0] > 0) & (front[:, 0] <= CHUNK_WIDTH) & (front[:, 1] > 0) & (front[:, 1] <= CHUNK_HEIGHT) & (front[:, 2] > 0) & (front[:, 2] <= CHUNK_WIDTH)]
         back = np.argwhere(mask[:, :, :-1] & (self.blockIDs[:, :, 1:] != 0)) + np.array([0, 0, 1])
-        back = back[(back[:, 0] > 0) & (back[:, 0] <= CHUNK_WIDTH) & (back[:, 2] > 0) & (back[:, 2] <= CHUNK_WIDTH)]
+        back = back[(back[:, 0] > 0) & (back[:, 0] <= CHUNK_WIDTH) & (back[:, 1] > 0) & (back[:, 1] <= CHUNK_HEIGHT) & (back[:, 2] > 0) & (back[:, 2] <= CHUNK_WIDTH)]
 
         return right, left, top, bottom, front, back
 
@@ -116,22 +124,20 @@ class Chunk(Entity):
             client.send_message("generate", [_pos, CHUNK_WIDTH, CHUNK_HEIGHT])
 
     def render(self):
-        time1 = time.perf_counter()
+        self.updateBorder()
         right, left, top, bottom, front, back = self.getRenderable()
         self.unrender()
-        self.updateBorder()
         self.buildMesh(left, right, top, bottom, front, back)
         if self.verts is None:
             self.isRendered = True
             return
-        self.model = Mesh(vertices=self.verts,uvs=self.uvs.tolist(), static=True)
+        self.model = Mesh(vertices=self.verts, uvs=self.uvs.tolist(), static=True)
         self.texture = blockTex
         self.visible_self = True
         self.isRendered = True
-        print("adding collider")
+
         self.collider = MeshCollider(self, mesh=self.model, center=Vec3(0, 0, 0))
         self.hasCollider = True
-        print("render: ", time.perf_counter()-time1)
 
     def unrender(self):
         self.model = None
@@ -175,7 +181,11 @@ class Chunk(Entity):
     def deleteBlock(self, position):
         global deletedBlocks
         _position = [int(position.x), int(position.y), int(position.z)]
-        client.send_message("deleteBlock", [_position, (self.position[0], self.position[2])])
+        _chunk = tuple(map(int, self.position))
+        client.send_message("deleteBlock", [_position, (self.position[0], self.position[1], self.position[2])])
+        # collider is no longer valid; mark for update
+        self.hasCollider = False
+        self.isRendered = False
         # update surrounding blocks
         # self.checkSurrounding(_position)
         # self.render()
@@ -185,27 +195,36 @@ class Chunk(Entity):
         _position = [int(position.x), int(position.y), int(position.z)]
         if _position[0] > CHUNK_WIDTH:
             _position[0] -= CHUNK_WIDTH
-            client.send_message("addBlock", [_position, id, (self.position[0] + 1, self.position[2])])
+            client.send_message("addBlock", [_position, id, (self.position[0] + 1, self.position[1], self.position[2])])
         elif _position[0] < 1:
             _position[0] += CHUNK_WIDTH
-            client.send_message("addBlock", [_position, id, (self.position[0] - 1, self.position[2])])
+            client.send_message("addBlock", [_position, id, (self.position[0] - 1, self.position[1], self.position[2])])
+        if _position[1] > CHUNK_HEIGHT:
+            _position[1] -= CHUNK_HEIGHT
+            client.send_message("addBlock", [_position, id, (self.position[0], self.position[1] + 1, self.position[2])])
+        elif _position[1] < 1:
+            _position[1] += CHUNK_HEIGHT
+            client.send_message("addBlock", [_position, id, (self.position[0], self.position[1] - 1, self.position[2])])
         if _position[2] > CHUNK_WIDTH:
             _position[2] -= CHUNK_WIDTH
-            client.send_message("addBlock", [_position, id, (self.position[0], self.position[2] + 1)])
+            client.send_message("addBlock", [_position, id, (self.position[0], self.position[1], self.position[2] + 1)])
         elif _position[2] < 1:
             _position[2] += CHUNK_WIDTH
-            client.send_message("addBlock", [_position, id, (self.position[0], self.position[2] - 1)])
-        if 0 < _position[0] <= CHUNK_WIDTH and 0 < _position[2] <= CHUNK_WIDTH:
-            client.send_message("addBlock", [_position, id, (self.position[0], self.position[2])])
+            client.send_message("addBlock", [_position, id, (self.position[0], self.position[1], self.position[2] - 1)])
+        if 0 < _position[0] <= CHUNK_WIDTH and 0 < _position[1] < CHUNK_HEIGHT and 0 < _position[2] <= CHUNK_WIDTH:
+            client.send_message("addBlock", [_position, id, (self.position[0], self.position[1], self.position[2])])
+        # collider is no longer valid; mark for update
+        self.hasCollider = False
+        self.isRendered = False
         # self.checkSurrounding(_position)
         # self.render()
 
-    def checkSurrounding(self, pos):
+    '''def checkSurrounding(self, pos):
         chList = []
         for i in itertools.product(range(pos[0] - 1, pos[0] + 2), range(pos[1] - 1, pos[1] + 2),
                                    range(pos[2] - 1, pos[2] + 2)):
             ch = self
-            chPos = [self.position[0], self.position[2]]
+            chPos = [self.position[0], self.position[1], self.position[2]]
             newpos = list(i)
             if i[0] > CHUNK_WIDTH:
                 # check adjacent chunk
@@ -215,29 +234,34 @@ class Chunk(Entity):
                 chPos[0] -= 1
                 newpos[0] += CHUNK_WIDTH
             if i[2] > CHUNK_WIDTH:
-                chPos[1] += 1
+                chPos[2] += 1
                 newpos[2] -= CHUNK_WIDTH
             if i[2] < 1:
-                chPos[1] -= 1
+                chPos[2] -= 1
                 newpos[2] += CHUNK_WIDTH
             if chPos != [self.position[0], self.position[2]]:
                 ch = getChunk(tuple(chPos))
                 if ch not in chList and ch != self:
                     chList.append(ch)
         for ch in chList:
-            ch.render()
+            ch.render()'''
 
     def setCollider(self):
-        self.collider = MeshCollider(self, mesh=self.model, center=Vec3(0, 0, 0))
-        self.hasCollider = True
+        if self.isRendered:
+            self.collider = MeshCollider(self, mesh=self.model, center=Vec3(0, 0, 0))
+            self.hasCollider = True
 
     def updateBorder(self):
         global renderedChunkPos
-        if (self.position[0] + 1, self.position[2]) in renderedChunkPos:
-            self.blockIDs[CHUNK_WIDTH + 1, :, :] = getChunk((self.position[0] + 1, self.position[2])).blockIDs[1, :, :]
-        if (self.position[0] - 1, self.position[2]) in renderedChunkPos:
-            self.blockIDs[0, :, :] = getChunk((self.position[0] - 1, self.position[2])).blockIDs[CHUNK_WIDTH, :, :]
-        if (self.position[0], self.position[2] + 1) in renderedChunkPos:
-            self.blockIDs[:, :, CHUNK_WIDTH + 1] = getChunk((self.position[0], self.position[2] + 1)).blockIDs[:, :, 1]
-        if (self.position[0], self.position[2] - 1) in renderedChunkPos:
-            self.blockIDs[:, :, 0] = getChunk((self.position[0], self.position[2] - 1)).blockIDs[:, :, CHUNK_WIDTH]
+        if (self.position[0] + 1, self.position[1], self.position[2]) in renderedChunkPos:
+            self.blockIDs[CHUNK_WIDTH + 1, :, :] = getChunk((self.position[0] + 1, self.position[1], self.position[2])).blockIDs[1, :, :]
+        if (self.position[0] - 1, self.position[1], self.position[2]) in renderedChunkPos:
+            self.blockIDs[0, :, :] = getChunk((self.position[0] - 1, self.position[1], self.position[2])).blockIDs[CHUNK_WIDTH, :, :]
+        if (self.position[0], self.position[1] + 1, self.position[2]) in renderedChunkPos:
+            self.blockIDs[:, CHUNK_HEIGHT + 1, :] = getChunk((self.position[0], self.position[1] + 1, self.position[2])).blockIDs[:, 1, :]
+        if (self.position[0], self.position[1] - 1, self.position[2]) in renderedChunkPos:
+            self.blockIDs[:, 0, :] = getChunk((self.position[0], self.position[1] - 1, self.position[2])).blockIDs[:, CHUNK_HEIGHT, :]
+        if (self.position[0], self.position[1], self.position[2] + 1) in renderedChunkPos:
+            self.blockIDs[:, :, CHUNK_WIDTH + 1] = getChunk((self.position[0], self.position[1], self.position[2] + 1)).blockIDs[:, :, 1]
+        if (self.position[0], self.position[1], self.position[2] - 1) in renderedChunkPos:
+            self.blockIDs[:, :, 0] = getChunk((self.position[0], self.position[1], self.position[2] - 1)).blockIDs[:, :, CHUNK_WIDTH]

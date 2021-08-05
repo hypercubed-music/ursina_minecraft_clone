@@ -49,6 +49,10 @@ class Player(Entity):
             # gravity
             ray = raycast(self.world_position+(0,self.height,0), self.down, ignore=(self,))
             # ray = boxcast(self.world_position+(0,self.height,0), self.down, ignore=(self,))
+            if ray.distance == inf:
+                self.gravity = 0.01
+            else:
+                self.gravity = 0.8
 
             if self.y - (self.height*2) < self.last_fall_point+0.1:
                 self.y = self.last_fall_point + (self.height*2)
