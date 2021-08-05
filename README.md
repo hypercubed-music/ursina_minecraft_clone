@@ -5,6 +5,6 @@
 
 ## Required libraries
 
-ursina, ursinanetworking,
-pynoise,
-numpy
+ursina, ursinanetworking, pynoise, numpy
+
+(Note that pynoise is really old; in order to use it you need to edit pynoise/gpu and replace ```enqueue_read_buffer``` with ```_enqueue_read_buffer```
